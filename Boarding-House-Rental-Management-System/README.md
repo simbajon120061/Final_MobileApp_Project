@@ -1,245 +1,249 @@
-﻿# Boarding House Rental Management System
+# Boarding House Rental Management System
 
-A comprehensive mobile and web application for managing boarding house operations, built with React Native (Expo) and Firebase.
+A role-based mobile property management application designed for boarding houses, apartment-style rental operations, and tenant administration. The system is built with React Native + Expo and uses Firebase Authentication and Firestore for secure login, multi-role access, and real-time property management.
 
-## 📁 Project Structure
+## Overview
 
-```
-boarding-house-rental-management-system/
-├── app/                          # Application source code
-│   ├── components/              # Reusable UI components
-│   │   ├── auth/               # Authentication components
-│   │   │   ├── AuthFormField.js
-│   │   │   ├── AuthModeSelector.js
-│   │   │   ├── AuthNotice.js
-│   │   │   └── AuthPrimaryButton.js
-│   │   ├── BottomNav.js         # Caretaker bottom navigation
-│   │   ├── CaretakerHeader.js   # Caretaker header
-│   │   ├── Logo.js              # App logo component
-│   │   ├── OwnerBottomNav.js    # Owner bottom navigation
-│   │   ├── OwnerHeader.js       # Owner header
-│   │   ├── TenantBottomNav.js   # Tenant bottom navigation
-│   │   └── TenantHeader.js      # Tenant header
-│   │
-│   ├── screens/                 # Application screens
-│   │   ├── auth/               # Authentication screens
-│   │   │   └── LoginScreen.js
-│   │   ├── owner/              # Owner portal screens
-│   │   │   ├── OwnerDashboard.js
-│   │   │   ├── OwnerRooms.js
-│   │   │   ├── OwnerTenants.js  # NEW: Tenant management
-│   │   │   └── OwnerReports.js
-│   │   ├── tenant/             # Tenant portal screens
-│   │   │   ├── TenantHomeScreen.js
-│   │   │   ├── TenantComplaintsScreen.js
-│   │   │   ├── TenantRoomChangeScreen.js
-│   │   │   └── TenantUpdatesScreen.js
-│   │   ├── AnnouncementsScreen.js  # Caretaker announcements
-│   │   ├── BillingScreen.js        # Caretaker billing
-│   │   ├── CaretakerDashboard.js   # Caretaker dashboard
-│   │   ├── IssuesScreen.js         # Caretaker issues
-│   │   ├── RoomsScreen.js          # Caretaker rooms
-│   │   └── TenantsScreen.js        # Caretaker tenants
-│   │
-│   ├── services/                # Business logic & data layer
-│   │   ├── authService.js       # Authentication service
-│   │   ├── dataService.js       # Data operations (36 functions)
-│   │   ├── databaseSchema.js    # Database schema definitions
-│   │   └── seedDatabase.js      # Database seeding
-│   │
-│   ├── utils/                   # Utility functions
-│   │   ├── firebase.js          # Firebase configuration
-│   │   ├── responsive.js        # Responsive design utilities
-│   │   └── ThemeContext.js      # Theme management (light/dark)
-│   │
-│   ├── CaretakerApp.js          # Caretaker app container
-│   ├── OwnerApp.js              # Owner app container
-│   ├── TenantApp.js             # Tenant app container
-│   ├── RoleSelector.js          # Role selection screen
-│   └── index.js                 # App entry point
-│
-├── assets/                      # Static assets (images, fonts)
-├── .gitignore                   # Git ignore rules
-├── App.js                       # Root app component
-├── app.json                     # Expo configuration
-├── firebase.json                # Firebase configuration
-├── firestore.rules              # Firestore security rules
-├── FIRESTORE_SETUP.md           # Database setup guide
-├── index.js                     # Expo entry point
-├── metro.config.js              # Metro bundler configuration
-├── package.json                 # Dependencies
-└── README.md                    # This file
-```
+This project helps property owners, caretakers, and tenants manage boarding house operations from one platform. It supports room management, lease tracking, billing, utility charges, complaints handling, announcements, tenant approvals, and financial monitoring.
 
-## 🚀 Getting Started
+The current version includes a unified landlord portal for owner/caretaker operations and a dedicated tenant portal for personal account management, billing, notifications, and service requests.
 
-### Prerequisites
-- Node.js 16+ and npm
-- Expo CLI: `npm install -g expo-cli`
-- Firebase account and project
+## Project Status
 
-### Installation
+Current release focuses on a complete operational workflow for:
+- landlord dashboard and management
+- tenant self-registration and approval flow
+- room and lease administration
+- billing and payment monitoring
+- complaint and update handling
+- announcement broadcasting and notifications
+- multi-device responsive mobile UI
 
-1. **Clone the repository**
-   ```bash
-   cd d:\Final_MobileApp_Project\Boarding-House-Rental-Management-System
-   ```
+## Functional Features
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+### Landlord / Owner / Caretaker Features
+- Dashboard overview of occupancy, financials, and active property status
+- Manage rooms and room assignments
+- Track tenant records and approval states
+- Create and review leases
+- Monitor billing, invoices, and utility charges
+- Record payments and review tenant financial activity
+- Review complaints/issues and update their status
+- Publish announcements and property updates
+- Generate reports and summaries for property operations
+- Review pending tenant registrations and approvals
+- Manage tenant finance details and payment history
 
-3. **Configure Firebase** (see `FIRESTORE_SETUP.md`)
-   - Create Firebase project
-   - Enable Authentication (Email/Password)
-   - Enable Firestore Database
-   - Deploy security rules: `firebase deploy --only firestore:rules`
+### Tenant Features
+- Login and account registration
+- View personal dashboard and room information
+- View lease details and monthly billing
+- Check financial statements and due balances
+- Submit payment proof documents
+- File complaints or maintenance issues
+- Request room changes
+- Receive announcements and personalized notifications
+- Update account profile and settings
+- View unread alerts and reminders
 
-4. **Start the development server**
-   ```bash
-   npm start
-   # or
-   npx expo start
-   ```
+### Shared Features
+- Firebase-based authentication and session management
+- Role-based access control
+- Firestore database integration
+- Responsive design for mobile and desktop layouts
+- Dark mode support
+- Real-time data refresh
+- Modular service and screen architecture
 
-## 👥 User Roles
+## System Architecture
 
-### Owner Portal
-- Full system access
-- Manage tenants (add, edit, delete, assign rooms)
-- Manage rooms (add rooms)
-- Create and terminate leases
-- View financial reports
-- Generate invoices
-- Record payments
+The application follows a layered architecture:
 
-### Caretaker Portal
-- Manage day-to-day operations
-- View rooms and tenants
-- Handle complaints (update status)
-- Create announcements
-- View billing information
-- Manage room change requests
+1. Presentation Layer
+   - React Native screens for landlord and tenant interfaces
+   - Reusable header, navigation, and UI components
+   - Theme support and responsive design utilities
+
+2. Application Layer
+   - Role-based routing
+   - Screen handlers for dashboards, rooms, billing, complaints, and announcements
+   - Business logic for approvals, finance, and notifications
+
+3. Data & Authentication Layer
+   - Firebase Authentication for login and account management
+   - Firestore collections for users, tenants, rooms, leases, invoices, complaints, and announcements
+   - Optional Supabase support for assignment-related workflows and integration helpers
+
+4. Persistence Model
+   - Normalized data collections to reduce duplication and maintain consistency
+   - Document-based design aligned with parcelled operations such as tenants, leases, rooms, and payments
+
+## Database Structure
+
+The system uses a normalized Firestore schema with collections such as:
+- users
+- staff_profiles
+- tenants
+- boarding_houses
+- room_types
+- rooms
+- leases
+- utility_readings
+- invoices
+- payments
+- payment_proofs
+- complaints
+- room_change_requests
+- room_assignment_requests
+- announcements
+- tenant_notifications
+
+## Role-Based Module Design
+
+### Landlord Portal
+The landlord portal combines the functions of owner and caretaker into one operational workspace.
+
+Modules include:
+- Dashboard
+- Rooms
+- Billing and Utilities
+- Complaints
+- Announcements
+- Reports
+- Pending Approvals
+- Tenant Financial Management
 
 ### Tenant Portal
-- View personal dashboard
-- Submit complaints
-- Request room changes
-- View announcements
-- View billing information
+The tenant portal provides account-specific functionality and communication.
 
-## 🔐 Authentication
+Modules include:
+- Home
+- Complaints
+- Updates
+- My Finances
+- Notifications
+- Settings
 
-### Demo Accounts
-Create staff accounts via Firebase Console:
-- Owner: Configure in Firebase Authentication
-- Caretaker: Configure in Firebase Authentication
-- Tenants: Self-register through the app
+## Methodology
 
-## 📊 Database Schema
+The project follows a modular mobile application development approach, using:
+- React Native + Expo for the client interface
+- Firebase for authentication and cloud database services
+- Firestore document-based modeling for business entities
+- Component-driven UI design
+- Role-based access separation for owner, caretaker, and tenant workflows
+- Service-based architecture to keep data logic organized
 
-The application uses a normalized relational database with collections including:
+This methodology supports maintainability, easier future extensions, and a clear separation between business logic and user interface modules.
 
-- `users` - User accounts and roles
-- `staff_profiles` - Owner/Caretaker profiles
-- `tenants` - Tenant information
-- `boarding_houses` - Property details
-- `room_types` - Room categories
-- `rooms` - Physical units
-- `leases` - Tenant-room assignments
-- `utility_readings` - Electricity consumption
-- `invoices` - Monthly billing
-- `payments` - Payment records
-- `complaints` - Issue tracking
-- `room_change_requests` - Room transfer requests
-- `announcements` - System notices
+## Project Structure
 
-See `FIRESTORE_SETUP.md` for detailed schema documentation.
-
-## 🎨 Features
-
-### ✅ Implemented
-- User authentication (login, register, password reset)
-- Role-based access control
-- Tenant management (CRUD operations)
-- Room management (add, assign)
-- Lease management (create, terminate)
-- Complaint system (submit, update status)
-- Announcements (create, view)
-- Room change requests (submit, review)
-- Responsive design (mobile, tablet, desktop)
-- Dark mode support
-- Real-time Firestore integration
-
-### 🚧 In Progress
-- Invoice generation interface
-- Payment recording interface
-- Utility meter reading entry
-
-## 🛠️ Technologies
-
-- **Frontend**: React Native, Expo SDK 57
-- **Backend**: Firebase (Authentication, Firestore)
-- **State Management**: React Hooks (useState, useEffect)
-- **Styling**: React Native StyleSheet, Theme Context
-- **Navigation**: Custom navigation system
-- **Icons**: Expo Vector Icons (Ionicons)
-
-## 📱 Platform Support
-
-- ✅ iOS (via Expo Go)
-- ✅ Android (via Expo Go)
-- ✅ Web (via Expo Web)
-
-## 🔧 Development
-
-### Clear cache and restart
-```bash
-npx expo start --clear
+```text
+Boarding-House-Rental-Management-System/
+├── app/
+│   ├── components/
+│   ├── screens/
+│   ├── services/
+│   ├── utils/
+│   ├── AppRouter / entry screens
+│   ├── LandlordApp.js
+│   ├── TenantApp.js
+│   └── RoleSelector.js
+├── assets/
+├── functions/
+├── supabase/
+├── App.js
+├── FIRESTORE_SETUP.md
+├── Database.MD
+├── README.md
+├── package.json
+├── firebase.json
+├── firestore.rules
+├── index.js
+├── metro.config.js
+├── .firebaserc
+└── LICENSE
 ```
 
-### Deploy Firestore rules
+## Tech Stack
+
+- React Native
+- Expo
+- Firebase Authentication
+- Firestore Database
+- JavaScript
+- React Native Styling and Components
+- Responsive mobile UI utilities
+- Dark mode / theme system
+
+## Setup and Run
+
+### Prerequisites
+- Node.js 18+
+- npm
+- Expo CLI
+- Firebase project
+
+### Installation
 ```bash
-firebase deploy --only firestore:rules --project boardinghouse-rental-mgt
+npm install
 ```
 
-### Project scripts
+### Start app
 ```bash
-npm start          # Start Expo development server
-npm run android    # Run on Android
-npm run ios        # Run on iOS
-npm run web        # Run on web
+npm start
 ```
 
-## 📝 Documentation
+Or run platform-specific:
+```bash
+npm run android
+npm run ios
+npm run web
+```
 
-- `FIRESTORE_SETUP.md` - Database schema and setup instructions
-- `CARETAKER_SYSTEM.md` - Caretaker features documentation
-- `firestore.rules` - Security rules (with inline comments)
+### Firebase configuration
+1. Create a Firebase project.
+2. Enable Email/Password authentication.
+3. Enable Firestore.
+4. Deploy the Firestore rules.
+5. Configure your app credentials in the Firebase setup files.
 
-## 🤝 Contributing
+## Security and Data Integrity
 
-This is a team project. Follow these guidelines:
-1. Never commit backup files (*.backup.*, *.bak)
-2. Never commit build artifacts (dist/, .expo/)
-3. Never commit environment files with secrets (.env)
-4. Always test before committing
-5. Follow the existing code structure
+The project includes:
+- role-based access checks
+- Firestore validation patterns
+- structured collection relationships
+- normalized schema to reduce duplicate and conflicting records
+- user profile verification and session handling
 
-## 📄 License
+## Application Use Cases
 
-See LICENSE file for details.
+Typical end-user scenarios include:
+- landlord reviews occupancy and finances
+- caretaker handles complaints and room issues
+- tenant signs up and waits for approval
+- tenant pays due bills and uploads proof
+- landlord approves room assignment requests
+- tenant receives updates and notices
+- landlord produces operational reports
 
-## 🆘 Support
+## Future Enhancements
 
-For issues or questions:
-1. Check `FIRESTORE_SETUP.md` for database issues
-2. Verify Firebase configuration in `app/utils/firebase.js`
-3. Ensure Firestore rules are deployed
-4. Clear cache if needed: `npx expo start --clear`
+The current project already covers the core rental management workflow and is structured for future expansion such as:
+- automated invoice generation
+- stronger analytics and charts
+- mobile notification push support
+- improved payment verification workflows
+- multi-property support
+- export and reporting features
 
----
+## License
 
-**Last Updated**: October 2026
-**Version**: 1.0.0 (Phase 1 Complete)
+This project is provided under the project license included in the repository.
+
+## Last Updated
+
+October 2026
+
+Version: 2.0
