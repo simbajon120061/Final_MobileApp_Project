@@ -6,9 +6,9 @@ import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
 import { getCurrentTenant, getTenantBillingBreakdown, getTenantPaymentHistory, getTenantPaymentProofs } from '../../services/dataService';
 import SubmitPaymentProofModal from '../../components/tenant/SubmitPaymentProofModal';
-import TenantApplicationStatusCard from '../../components/tenant/TenantApplicationStatusCard';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
-export default function TenantFinancesScreen({ user }) {
+export default function TenantFinancesScreen({ user, onNavigateToApplication }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
 
@@ -55,6 +55,14 @@ export default function TenantFinancesScreen({ user }) {
       setRefreshing(false);
     }
   }, [tenantId]);
+
+  useRealtimeRefresh(`tenant-finances-${tenantId || 'unknown'}`, [
+    { table: 'tenants', filter: `id=eq.${tenantId || ''}` },
+    { table: 'invoices' },
+    { table: 'payment_proofs', filter: `tenant_id=eq.${tenantId || ''}` },
+    { table: 'room_assignment_requests', filter: `tenant_id=eq.${tenantId || ''}` },
+    { table: 'leases', filter: `tenant_id=eq.${tenantId || ''}` },
+  ], loadFinancialData, Boolean(tenantId));
 
   useEffect(() => {
     setLoading(true);
@@ -120,7 +128,18 @@ export default function TenantFinancesScreen({ user }) {
           </Text>
           <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '700' }}>My Finances</Text>
         </View>
-        <TenantApplicationStatusCard tenant={tenantInfo} tenantId={user?.tenant_id} onChanged={loadFinancialData} />
+        <View style={{ paddingHorizontal: padding }}>
+          <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 22, alignItems: 'center' }}>
+            <Ionicons name="document-text-outline" size={32} color={colors.accent} />
+            <Text style={{ color: colors.text, fontSize: fs(17), fontWeight: '800', textAlign: 'center', marginTop: 10 }}>Application review in progress</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: fs(13), lineHeight: 19, textAlign: 'center', marginTop: 6 }}>
+              Room selection and move-in payment setup are on your Application page.
+            </Text>
+            <TouchableOpacity onPress={onNavigateToApplication} accessibilityRole="button" style={{ marginTop: 15, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 10, backgroundColor: colors.accent }}>
+              <Text style={{ color: '#fff', fontWeight: '800', fontSize: fs(13) }}>Open application</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     );
   }
@@ -147,7 +166,7 @@ export default function TenantFinancesScreen({ user }) {
       
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: padding, paddingTop: isMobile ? 16 : 40, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: padding, paddingTop: isMobile ? 16 : 40, paddingBottom: spacing.sm }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
         {/* Header */}
@@ -203,7 +222,7 @@ export default function TenantFinancesScreen({ user }) {
             onPress={() => !hasPendingProof && setShowPaymentModal(true)}
             disabled={hasPendingProof || !currentInvoice?.id}
             style={{
-              backgroundColor: hasPendingProof ? colors.warningText : colors.accent,
+              backgroundColor: hasPendingProof ? colors.warningText : colors.successText,
               padding: 16,
               borderRadius: 12,
               flexDirection: 'row',

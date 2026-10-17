@@ -7,6 +7,7 @@ import { isMobile, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } f
 import { getTenantsWithFinancialStatus } from '../../services/dataService';
 import RecordPaymentModal from '../../components/landlord/RecordPaymentModal';
 import TenantListPager from '../../components/landlord/TenantListPager';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 const TENANTS_PER_PAGE = 5;
 
@@ -24,6 +25,16 @@ export default function TenantFinancialManagement({ initialFilter = 'all' }) {
   // Modal states
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState(null);
+  const [realtimeVersion, setRealtimeVersion] = useState(0);
+
+  useRealtimeRefresh('landlord-tenant-finances', [
+    { table: 'tenants' },
+    { table: 'leases' },
+    { table: 'rooms' },
+    { table: 'invoices' },
+    { table: 'payments' },
+    { table: 'payment_proofs' },
+  ], () => setRealtimeVersion((version) => version + 1));
 
   const loadTenants = async (filter = 'all') => {
     try {
@@ -42,7 +53,7 @@ export default function TenantFinancialManagement({ initialFilter = 'all' }) {
 
   useEffect(() => {
     loadTenants(activeFilter);
-  }, [activeFilter]);
+  }, [activeFilter, realtimeVersion]);
 
   const pageCount = Math.max(1, Math.ceil(tenants.length / TENANTS_PER_PAGE));
   const visibleTenants = tenants.slice(page * TENANTS_PER_PAGE, (page + 1) * TENANTS_PER_PAGE);
@@ -63,6 +74,7 @@ export default function TenantFinancialManagement({ initialFilter = 'all' }) {
   };
 
   const handleRecordPayment = (tenant) => {
+    if (!tenant) return;
     setSelectedTenant(tenant);
     setPaymentModalVisible(true);
   };
@@ -111,7 +123,7 @@ export default function TenantFinancialManagement({ initialFilter = 'all' }) {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: padding, paddingTop: isMobile ? 16 : 40, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: padding, paddingTop: isMobile ? 16 : 40, paddingBottom: spacing.sm }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
         {/* Header */}
@@ -194,7 +206,7 @@ export default function TenantFinancialManagement({ initialFilter = 'all' }) {
               colors={colors}
             />
             <View style={{ gap: spacing.md }}>
-            {visibleTenants.map((tenant) => {
+            {visibleTenants.filter((tenant) => tenant && typeof tenant === 'object').map((tenant) => {
               const statusColors = getStatusColor(tenant.status);
               return (
                 <View
@@ -214,7 +226,7 @@ export default function TenantFinancialManagement({ initialFilter = 'all' }) {
                         width: 52,
                         height: 52,
                         borderRadius: 26,
-                        backgroundColor: tenant.color,
+                        backgroundColor: tenant.color || colors.accent,
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
@@ -309,7 +321,10 @@ export default function TenantFinancialManagement({ initialFilter = 'all' }) {
         <RecordPaymentModal
           visible={paymentModalVisible}
           tenant={selectedTenant}
-          onClose={() => setPaymentModalVisible(false)}
+          onClose={() => {
+            setPaymentModalVisible(false);
+            setSelectedTenant(null);
+          }}
           onSuccess={handlePaymentSuccess}
         />
       )}

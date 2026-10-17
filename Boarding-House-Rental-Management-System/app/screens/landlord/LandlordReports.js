@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getMonthlyIncome, getPeriodSummary } from '../../services/dataService';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 const getCurrentPeriod = () => {
   const now = new Date();
@@ -29,10 +30,22 @@ export default function OwnerReports() {
   const [monthlyIncome, setMonthlyIncome] = useState([]);
   const [summary, setSummary] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(getCurrentPeriod);
+  const [realtimeVersion, setRealtimeVersion] = useState(0);
+
+  useRealtimeRefresh('landlord-reports', [
+    { table: 'rooms' },
+    { table: 'tenants' },
+    { table: 'leases' },
+    { table: 'invoices' },
+    { table: 'payments' },
+    { table: 'complaints' },
+    { table: 'utility_readings' },
+  ], () => setRealtimeVersion((version) => version + 1));
 
   useEffect(() => {
     const loadData = async () => {
       try {
+        setError(null);
         const monthlyIncomeData = await getMonthlyIncome(selectedPeriod);
         const summaryData = await getPeriodSummary(selectedPeriod);
 
@@ -45,7 +58,7 @@ export default function OwnerReports() {
       }
     };
     loadData();
-  }, [selectedPeriod]);
+  }, [selectedPeriod, realtimeVersion]);
 
   if (loading) return <ScreenSkeleton />;
   if (error) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}><Text style={{ color: colors.danger, fontSize: 16 }}>{error}</Text></View>;

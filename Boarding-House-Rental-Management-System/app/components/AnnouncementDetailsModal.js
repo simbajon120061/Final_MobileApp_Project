@@ -14,7 +14,7 @@ export default function AnnouncementDetailsModal({ announcement, onClose }) {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
             <Text style={{ fontSize: fs(18), fontWeight: '800', color: colors.text, flex: 1, marginRight: 12 }}>Announcement</Text>
             <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Close announcement" hitSlop={10}>
-              <Ionicons name="close-circle" size={26} color={colors.textMuted} />
+              <Ionicons name="close-circle" size={26} color={colors.dangerText} />
             </TouchableOpacity>
           </View>
           {announcement && (

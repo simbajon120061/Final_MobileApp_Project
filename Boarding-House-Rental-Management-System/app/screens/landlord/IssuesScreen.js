@@ -16,6 +16,7 @@ import {
 } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getIssues, updateComplaintStatus } from '../../services/dataService';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 export default function IssuesScreen() {
   const complaintsPerPage = 4;
@@ -33,7 +34,6 @@ export default function IssuesScreen() {
 
   const loadIssues = async () => {
     try {
-      setLoading(true);
       setError(null);
       const data = await getIssues();
       setIssues(data);
@@ -47,6 +47,8 @@ export default function IssuesScreen() {
   useEffect(() => {
     loadIssues();
   }, []);
+
+  useRealtimeRefresh('landlord-complaints', [{ table: 'complaints' }], loadIssues);
 
   const handleUpdateStatus = async (complaintId, newStatus) => {
     try {
@@ -357,7 +359,7 @@ export default function IssuesScreen() {
                       onPress={() => handleUpdateStatus(issue.complaint_id, 'resolved')}
                       style={{
                         flex: 1,
-                        backgroundColor: colors.accent,
+                        backgroundColor: colors.successText,
                         paddingVertical: 14,
                         borderRadius: 12,
                         alignItems: 'center',
@@ -543,9 +545,9 @@ export default function IssuesScreen() {
                     <TouchableOpacity
                       accessibilityRole="button"
                       onPress={() => setSelectedComplaintId(null)}
-                      style={{ flex: 1, minHeight: 46, borderRadius: 11, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}
+                      style={{ flex: 1, minHeight: 46, borderRadius: 11, backgroundColor: colors.dangerText, alignItems: 'center', justifyContent: 'center' }}
                     >
-                      <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary }}>Close</Text>
+                      <Text style={{ fontSize: fs(14), fontWeight: '700', color: '#fff' }}>Close</Text>
                     </TouchableOpacity>
                     {selectedComplaint.status === 'pending' ? (
                       <TouchableOpacity

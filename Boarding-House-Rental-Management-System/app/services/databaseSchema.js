@@ -29,10 +29,10 @@ export const COLLECTIONS = {
 /**
  * 3NF Entity Relationship Specifications:
  * 
- * 1. USERS: Authentication & base authorization
+ * 1. USERS: Supabase Auth profile & base authorization
  *    - PK: user_id
  *    - Fields: email, role ('owner'|'caretaker'|'tenant'), created_at
- *    - Authentication credentials remain in Firebase Authentication.
+ *    - Authentication credentials remain in Supabase Auth; profiles.id equals auth.users.id.
  * 
  * 2. BOARDING_HOUSES: Property details
  *    - PK: house_id

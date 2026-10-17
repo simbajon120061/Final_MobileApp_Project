@@ -153,15 +153,14 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
   };
 
   const handleRecordPayment = () => {
-    if (confirming) {
-      return handleConfirmPayment();
-    }
-    handleReviewPayment();
+    handleConfirmPayment();
   };
 
   const paymentMethods = [
     { id: 'cash', label: 'Cash', icon: 'cash-outline' },
   ];
+
+  if (!tenant) return null;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => !submitting && onClose()}>
@@ -200,7 +199,7 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
                 width: 48,
                 height: 48,
                 borderRadius: 24,
-                backgroundColor: tenant.color,
+                backgroundColor: tenant.color || colors.accent,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -418,13 +417,13 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
               disabled={submitting}
               style={{
                 flex: 1,
-                backgroundColor: colors.bg,
+                backgroundColor: colors.dangerText,
                 paddingVertical: 14,
                 borderRadius: 12,
                 alignItems: 'center',
               }}
             >
-              <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text }}>Cancel</Text>
+              <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Cancel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -432,7 +431,7 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
               disabled={submitting || loading || !amount || !latestInvoiceId}
               style={{
                 flex: 1,
-                backgroundColor: !amount || loading || !latestInvoiceId ? colors.textMuted : colors.accent,
+                backgroundColor: !amount || loading || !latestInvoiceId ? colors.textMuted : colors.successText,
                 paddingVertical: 14,
                 borderRadius: 12,
                 alignItems: 'center',
@@ -442,7 +441,7 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>
-                  {confirming ? 'Confirm Payment' : 'Review Payment'}
+                  {confirming ? 'Confirm Payment' : 'Confirm Payment'}
                 </Text>
               )}
             </TouchableOpacity>

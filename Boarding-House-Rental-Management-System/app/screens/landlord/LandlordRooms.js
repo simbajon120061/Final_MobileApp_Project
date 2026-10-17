@@ -14,13 +14,28 @@ import {
   getGridColumns,
 } from '../../utils/responsive';
 import { addRoom, getRooms, getRoomTypes } from '../../services/dataService';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
+
+async function loadRoomTypesWithTimeout(timeoutMs = 12000) {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      getRoomTypes(),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Room types are taking too long to load. Check your connection and try again.')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 function getRoomErrorMessage(error, fallbackMessage) {
-  if (['permission-denied', 'firestore/permission-denied'].includes(error?.code)) {
+  if (['42501', 'PGRST301', 'permission-denied'].includes(error?.code)) {
     return 'Only the owner account can add rooms.';
   }
   if (['unavailable', 'deadline-exceeded', 'auth/network-request-failed'].includes(error?.code)) {
-    return 'Could not connect to Firestore. Check your internet connection and try again.';
+    return 'Could not connect to Supabase. Check your internet connection and try again.';
   }
   return error?.message || fallbackMessage;
 }
@@ -59,9 +74,8 @@ export default function RoomsScreen() {
 
   const loadData = async () => {
     try {
-      setLoading(true);
       setError(null);
-      const [roomsData, typesData] = await Promise.all([getRooms(), getRoomTypes()]);
+      const [roomsData, typesData] = await Promise.all([getRooms(), loadRoomTypesWithTimeout()]);
       setRooms(roomsData);
       setRoomTypes(typesData);
       setSelectedTypeId((currentTypeId) => (
@@ -78,6 +92,11 @@ export default function RoomsScreen() {
     loadData();
   }, []);
 
+  useRealtimeRefresh('landlord-rooms', [
+    { table: 'rooms' },
+    { table: 'room_types' },
+  ], loadData);
+
   const openCreateRoom = async () => {
     setFormError('');
     setCreateModalVisible(true);
@@ -85,7 +104,7 @@ export default function RoomsScreen() {
 
     setLoadingRoomTypes(true);
     try {
-      const types = await getRoomTypes();
+      const types = await loadRoomTypesWithTimeout();
       setRoomTypes(types);
       setSelectedTypeId(types[0]?.id || '');
     } catch (err) {
@@ -575,9 +594,14 @@ export default function RoomsScreen() {
                 <Text style={{ marginTop: 6, color: colors.textMuted, fontSize: fs(11), lineHeight: 16 }}>Shown on the room card. The room stays vacant until a tenant lease is assigned.</Text>
               </View>
             
-            {!loadingRoomTypes && roomTypes.length === 0 && !formError && <Text style={{ color: colors.textMuted, marginTop: 10, fontSize: fs(12) }}>No room types found. Ask the administrator to upload the sample data.</Text>}
+            {!loadingRoomTypes && roomTypes.length === 0 && !formError && <Text style={{ color: colors.textMuted, marginTop: 10, fontSize: fs(12) }}>No room types are configured yet. Ask the administrator to configure them in Supabase.</Text>}
 
             {!!formError && <Text accessibilityRole="alert" style={{ color: colors.danger, marginTop: 13, fontSize: fs(13), fontWeight: '600' }}>{formError}</Text>}
+            {!loadingRoomTypes && roomTypes.length === 0 && !!formError && (
+              <TouchableOpacity accessibilityRole="button" onPress={openCreateRoom} style={{ alignSelf: 'flex-start', marginTop: 8, paddingVertical: 6 }}>
+                <Text style={{ color: colors.ownerAccent, fontSize: fs(13), fontWeight: '800' }}>Retry loading room types</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity accessibilityRole="button" disabled={saving || loadingRoomTypes || roomTypes.length === 0} onPress={saveRoom} style={{ minHeight: 48, marginTop: 20, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.ownerAccent, alignItems: 'center', justifyContent: 'center', opacity: saving || loadingRoomTypes || roomTypes.length === 0 ? 0.6 : 1 }}>
               {saving || loadingRoomTypes ? <ActivityIndicator color={colors.onPrimary || '#ffffff'} /> : <Text style={{ color: colors.onPrimary || '#ffffff', fontSize: fs(14), fontWeight: '800' }}>Create room</Text>}
                 </TouchableOpacity>

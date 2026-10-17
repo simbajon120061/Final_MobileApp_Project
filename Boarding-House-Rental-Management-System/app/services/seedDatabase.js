@@ -1,9 +1,7 @@
 /**
  * 3NF Normalized Database Seeder & Mock Store
  * 
- * Provides:
- * 1. `getNormalizedMockDatabase()`: Full normalized relational database representation
- * 2. `seedFirestoreDatabase(db)`: Direct batch seeder to push all collections to Firestore
+ * Provides a normalized in-memory database for screens running without Supabase.
  */
 
 import { COLLECTIONS } from './databaseSchema.js';
@@ -414,22 +412,3 @@ export function resetNormalizedMockDatabase() {
   return inMemory3NFStore;
 }
 
-/**
- * Seeds all normalized collections into Firestore when a live Firebase project is connected.
- */
-export async function seedFirestoreDatabase(firestoreInstance) {
-  if (!firestoreInstance) throw new Error('Firestore instance required');
-  const { doc, writeBatch } = await import('firebase/firestore');
-
-  const batch = writeBatch(firestoreInstance);
-
-  for (const [collectionName, records] of Object.entries(SEED_DATA)) {
-    for (const record of records) {
-      const docRef = doc(firestoreInstance, collectionName, record.id);
-      batch.set(docRef, record);
-    }
-  }
-
-  await batch.commit();
-  return { success: true, message: 'Sample data uploaded to Firestore.' };
-}

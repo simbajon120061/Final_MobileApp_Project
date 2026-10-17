@@ -2,6 +2,7 @@
   "expo": {
     "name": "Nads & Gracy BH",
     "slug": "Boarding-House-Rental-Management-System",
+    "scheme": "boardinghouse",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

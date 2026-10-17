@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getTenantComplaints, submitComplaint } from '../../services/dataService';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 export default function TenantComplaintsScreen({ user }) {
   const { colors } = useTheme();
@@ -23,7 +24,6 @@ export default function TenantComplaintsScreen({ user }) {
 
   const loadComplaints = async () => {
     try {
-      setLoading(true);
       setError(null);
       const data = await getTenantComplaints(user?.tenant_id);
       setComplaints(data);
@@ -37,6 +37,10 @@ export default function TenantComplaintsScreen({ user }) {
   useEffect(() => {
     loadComplaints();
   }, [user?.tenant_id]);
+
+  useRealtimeRefresh(`tenant-complaints-${user?.tenant_id || 'unknown'}`, [
+    { table: 'complaints', filter: `tenant_id=eq.${user?.tenant_id || ''}` },
+  ], loadComplaints, Boolean(user?.tenant_id));
 
   const handleCreateComplaint = async () => {
     if (!newTitle.trim()) {
@@ -251,7 +255,7 @@ export default function TenantComplaintsScreen({ user }) {
                 Submit New Complaint
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close-circle" size={26} color={colors.textMuted} />
+                <Ionicons name="close-circle" size={26} color={colors.dangerText} />
               </TouchableOpacity>
             </View>
 
@@ -315,18 +319,16 @@ export default function TenantComplaintsScreen({ user }) {
                 onPress={() => setModalVisible(false)}
                 style={{
                   flex: 1,
-                  backgroundColor: colors.bg,
+                  backgroundColor: colors.dangerText,
                   paddingVertical: 14,
                   borderRadius: 12,
                   overflow: 'hidden',
                   alignItems: 'center',
-                  borderWidth: 1,
-                  borderColor: colors.cardBorder,
                   minHeight: 48,
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.textMuted }}>Cancel</Text>
+                <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={submitting ? undefined : handleCreateComplaint}
@@ -334,7 +336,7 @@ export default function TenantComplaintsScreen({ user }) {
                 style={{
                   pointerEvents: submitting ? 'none' : 'auto',
                   flex: 1,
-                  backgroundColor: colors.primary,
+                  backgroundColor: colors.successText,
                   paddingVertical: 14,
                   borderRadius: 12,
                   overflow: 'hidden',

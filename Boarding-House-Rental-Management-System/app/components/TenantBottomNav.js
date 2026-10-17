@@ -11,6 +11,7 @@ export default function TenantBottomNav({ user, activeScreen, onNavigate, badges
 
   const navItems = [
     { id: 'home', label: 'Home', icon: 'home', iconOutline: 'home-outline' },
+    { id: 'application', label: 'Application', icon: 'document-text', iconOutline: 'document-text-outline' },
     { id: 'finances', label: 'Finances', icon: 'wallet', iconOutline: 'wallet-outline' },
     { id: 'notifications', label: 'Notifications', icon: 'notifications', iconOutline: 'notifications-outline' },
     { id: 'complaints', label: 'Complaints', icon: 'chatbubble', iconOutline: 'chatbubble-outline' },

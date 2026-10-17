@@ -234,7 +234,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <Text style={{ color: colors.text, fontSize: fs(19), fontWeight: '800', flex: 1 }}>Room & payment setup</Text>
               <TouchableOpacity onPress={() => !submitting && setModalVisible(false)} disabled={submitting} accessibilityRole="button" accessibilityLabel="Close room picker">
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
+                <Ionicons name="close" size={24} color={colors.dangerText} />
               </TouchableOpacity>
             </View>
             <Text style={{ color: colors.textSecondary, fontSize: fs(13), lineHeight: 19, marginBottom: 14 }}>
@@ -295,7 +295,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
             <TouchableOpacity
               onPress={saveRoomPreference}
               disabled={loadingRooms || submitting || !selectedRoomId}
-              style={{ backgroundColor: colors.accent, opacity: loadingRooms || submitting || !selectedRoomId ? 0.55 : 1, borderRadius: 11, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', marginTop: 14, minHeight: 46 }}
+              style={{ backgroundColor: colors.successText, opacity: loadingRooms || submitting || !selectedRoomId ? 0.55 : 1, borderRadius: 11, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', marginTop: 14, minHeight: 46 }}
             >
               {submitting ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

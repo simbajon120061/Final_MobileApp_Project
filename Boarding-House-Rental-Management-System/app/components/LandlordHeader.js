@@ -165,7 +165,7 @@ export default function LandlordHeader({
             <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Log out?</Text>
             <Text style={{ color: colors.textMuted, fontSize: 14, lineHeight: 20, marginTop: 7 }}>Are you sure you want to log out of your landlord account?</Text>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
-              <TouchableOpacity onPress={() => setConfirmLogout(false)} accessibilityRole="button" style={{ minHeight: 42, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 11, borderWidth: 1, borderColor: colors.cardBorder }}><Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '700' }}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setConfirmLogout(false)} accessibilityRole="button" style={{ minHeight: 42, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 11, backgroundColor: colors.bg }}><Text style={{ color: '#4A4640', fontSize: 14, fontWeight: '700' }}>Cancel</Text></TouchableOpacity>
               <TouchableOpacity onPress={() => { setConfirmLogout(false); onLogout?.(); }} accessibilityRole="button" style={{ minHeight: 42, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 11, backgroundColor: colors.dangerText }}><Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>Log out</Text></TouchableOpacity>
             </View>
           </View>

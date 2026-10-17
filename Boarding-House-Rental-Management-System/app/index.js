@@ -1,18 +1,38 @@
 import ScreenSkeleton from './components/ScreenSkeleton';
 import React, { useEffect, useState } from 'react';
-import { BackHandler, Platform } from 'react-native';
+import { BackHandler, Linking, Platform } from 'react-native';
 import { ThemeProvider } from './utils/ThemeContext';
 import LoginScreen from './screens/auth/LoginScreen';
 import LandlordApp from './LandlordApp';
 import TenantApp from './TenantApp';
-import { logout, subscribeToCurrentUser } from './services/authService';
+import { handleAuthRedirect, logout, subscribeToCurrentUser } from './services/authService';
+import PasswordRecoveryScreen from './screens/auth/PasswordRecoveryScreen';
 
 function AppRouter() {
   const [currentUser, setCurrentUser] = useState(null); // null = unauthenticated
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   useEffect(() => {
     let isMounted = true;
     let unsubscribeAuth = null;
+
+    const handleRecoveryLink = async (url) => {
+      try {
+        const isRecoveryLink = await handleAuthRedirect(url);
+        if (isMounted && isRecoveryLink) setPasswordRecovery(true);
+      } catch (error) {
+        console.warn('Supabase auth link could not be processed:', error.message);
+      }
+    };
+
+    let linkSubscription = null;
+    if (Platform.OS !== 'web') {
+      Linking.getInitialURL().then((url) => {
+        if (url) return handleRecoveryLink(url);
+        return undefined;
+      });
+      linkSubscription = Linking.addEventListener('url', ({ url }) => handleRecoveryLink(url));
+    }
 
     subscribeToCurrentUser((user) => {
       if (!isMounted) return;
@@ -21,6 +41,9 @@ function AppRouter() {
     }, () => {
       if (!isMounted) return;
       setCheckingAuth(false);
+    }, () => {
+      if (!isMounted) return;
+      setPasswordRecovery(true);
     }).then((unsubscribe) => {
       if (!isMounted) {
         unsubscribe();
@@ -29,12 +52,13 @@ function AppRouter() {
 
       unsubscribeAuth = unsubscribe;
     }).catch((error) => {
-      console.warn('Firebase auth listener failed:', error.message);
+      console.warn('Supabase auth listener failed:', error.message);
       if (isMounted) setCheckingAuth(false);
     });
 
     return () => {
       isMounted = false;
+      linkSubscription?.remove();
       if (unsubscribeAuth) unsubscribeAuth();
     };
   }, []);
@@ -56,6 +80,13 @@ function AppRouter() {
   };
 
   if (checkingAuth) return <ScreenSkeleton />;
+
+  if (passwordRecovery) {
+    return <PasswordRecoveryScreen onComplete={(user) => {
+      setPasswordRecovery(false);
+      setCurrentUser(user);
+    }} />;
+  }
 
   if (!currentUser) {
     return <LoginScreen onLoginSuccess={setCurrentUser} />;

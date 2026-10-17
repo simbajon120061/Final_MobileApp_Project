@@ -8,6 +8,7 @@ import { getPendingTenantRegistrations } from '../../services/dataService';
 import TenantApprovalModal from '../../components/landlord/TenantApprovalModal';
 import TenantRejectionModal from '../../components/landlord/TenantRejectionModal';
 import TenantListPager from '../../components/landlord/TenantListPager';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 const TENANTS_PER_PAGE = 5;
 
@@ -25,6 +26,7 @@ export default function PendingApprovalsScreen() {
   const [approvalModalVisible, setApprovalModalVisible] = useState(false);
   const [rejectionModalVisible, setRejectionModalVisible] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState(null);
+  const [realtimeVersion, setRealtimeVersion] = useState(0);
 
   const loadPendingTenants = async () => {
     try {
@@ -42,7 +44,11 @@ export default function PendingApprovalsScreen() {
 
   useEffect(() => {
     loadPendingTenants();
-  }, []);
+  }, [realtimeVersion]);
+
+  useRealtimeRefresh('landlord-pending-approvals-list', [{ table: 'tenants' }], () => {
+    setRealtimeVersion((version) => version + 1);
+  });
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -99,7 +105,7 @@ export default function PendingApprovalsScreen() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: padding, paddingTop: isMobile ? 16 : 40, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: padding, paddingTop: isMobile ? 16 : 40, paddingBottom: spacing.sm }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
         {/* Header */}
@@ -220,7 +226,7 @@ export default function PendingApprovalsScreen() {
                     onPress={() => handleRejectPress(tenant)}
                     style={{
                       flex: 1,
-                      backgroundColor: colors.dangerBg,
+                      backgroundColor: colors.dangerText,
                       paddingVertical: 14,
                       borderRadius: 12,
                       alignItems: 'center',
@@ -229,15 +235,15 @@ export default function PendingApprovalsScreen() {
                       gap: 8,
                     }}
                   >
-                    <Ionicons name="close-circle-outline" size={20} color={colors.dangerText} />
-                    <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.dangerText }}>Reject</Text>
+                    <Ionicons name="close-circle-outline" size={20} color="#fff" />
+                    <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Reject</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={() => handleApprovePress(tenant)}
                     style={{
                       flex: 1,
-                      backgroundColor: colors.accent,
+                      backgroundColor: colors.successText,
                       paddingVertical: 14,
                       borderRadius: 12,
                       alignItems: 'center',
@@ -278,4 +284,3 @@ export default function PendingApprovalsScreen() {
     </View>
   );
 }
-

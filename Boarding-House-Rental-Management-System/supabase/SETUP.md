@@ -1,17 +1,77 @@
-# Initial room and payment setup
+# Supabase Auth and database setup
 
-The tenant's initial room choice and proof of one month advance are stored in Supabase. Firebase remains the sign-in provider
-and continues to hold the room catalog and the rest of the app's records.
+The app now uses **Supabase Auth, Postgres, and Supabase Storage**. Firebase accounts are not imported. New users create new Supabase accounts, and signup creates a pending tenant profile automatically.
 
-## One-time Supabase setup
+## 1. Apply the database migrations
 
-1. In the Supabase Dashboard, open **Authentication → Sign In / Providers → Third-Party Auth** and connect Firebase project `boardinghouse-rental-mgt`.
-2. Make sure the base schema in `migrations/20261009161120_initial_schema.sql` and initial room setup in `migrations/20261010120000_supabase_initial_room_setup.sql` have been applied. Apply any unapplied migrations in timestamp order, including `migrations/20261012120000_initial_advance_only.sql`, `migrations/20261012160000_secure_security_definer_helpers.sql`, and `migrations/20261012170000_profiles_staff_write_policies.sql`. The advance-only migration clears existing deposit amounts and halves old two-month room setup amounts; the security migration moves RLS helpers out of the exposed API schema and revokes public execution of the maintenance RPC; the profile policy migration separates staff writes from profile reads. Make sure `private` is not listed under **Exposed schemas** in Supabase API settings.
-3. From the project root, run `node scripts/configure-firebase-supabase-claims.mjs <path-to-firebase-service-account.json>`. Use a Firebase Admin service account for the same Firebase project. The script assigns `role: authenticated` and adds `app_role` for existing owner, landlord, and caretaker accounts. Have existing users sign out and back in to refresh their tokens. This step repairs existing accounts without Cloud Functions.
-4. Automatic claim assignment for new accounts requires deploying the Firebase claim functions with `firebase deploy --only functions`. Firebase Functions deployment requires the project to be on the Blaze (pay-as-you-go) plan. The signup trigger handles new Firebase accounts after deployment. On the current Spark plan, rerun the Admin claims script whenever a new account needs Supabase access. The app checks for the claim before making Supabase requests and gives the administrator setup instruction if it is missing.
-5. Confirm `.env` has `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, then restart Expo so it picks up the values.
-6. For existing Firestore records, set `GOOGLE_APPLICATION_CREDENTIALS` to a Firebase Admin service-account JSON path, preview with `node scripts/migrate-initial-advance-only.cjs`, then apply with `node scripts/migrate-initial-advance-only.cjs --apply`. This clears lease and initial-invoice deposit fields. It preserves recorded payments; review old overpayments for refund or credit handling.
+From the app folder, link the Supabase CLI to the intended project and push the migrations in `supabase/migrations` in timestamp order. The new full-Supabase migration is `20261015120000_supabase_auth_and_full_app.sql`.
 
-Keep the service-account JSON private and do not add it to source control. Never
-put the Supabase service-role key in the app; the app uses the publishable key
-and the row/object policies in the migration.
+The latest migration enables Realtime for the app tables used by live notifications, announcements, approvals, billing, and tenant updates. Apply it to the same hosted project before expecting screens to update automatically.
+
+```powershell
+npx supabase login
+npx supabase link --project-ref <your-project-ref>
+npx supabase db push
+```
+
+Use a development Supabase project first. The migration updates the profile signup trigger and replaces Firebase-token access policies with Supabase-user policies.
+
+## 2. Configure app credentials and email sign-in
+
+In the Supabase Dashboard, enable **Authentication → Providers → Email**. Decide whether new users must confirm their email. Set the project Site URL and add allowed redirect URLs for password recovery: your deployed web app origin and `boardinghouse://auth/reset-password` for native builds. Set `EXPO_PUBLIC_SUPABASE_REDIRECT_URL` if your app uses a different callback URL.
+
+If the project previously trusted Firebase under **Authentication → Sign In / Providers → Third-Party Auth**, remove that Firebase integration after the app cutover. Hosted Dashboard provider settings are separate from `supabase/config.toml`.
+
+Set these Expo variables in `.env`:
+
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<your-publishable-key>
+```
+
+Use only the publishable key in the Expo app. Never put a Supabase secret or service-role key in an `EXPO_PUBLIC_` variable. Restart Expo after changing `.env`.
+
+## 3. Create the first landlord
+
+Create the landlord account through the app’s registration screen and confirm the email first if confirmation is enabled. Then run this once in **Supabase Dashboard → SQL Editor**, replacing the email and staff details:
+
+```sql
+do $$
+declare
+  landlord_id uuid;
+begin
+  select id into landlord_id
+  from auth.users
+  where lower(email) = lower('landlord@example.com');
+
+  if landlord_id is null then
+    raise exception 'Create and confirm the landlord account before running this SQL';
+  end if;
+
+  update public.profiles
+  set role = 'landlord'
+  where id = landlord_id;
+
+  insert into public.staff_profiles (user_id, first_name, last_name, phone)
+  values (landlord_id, 'Landlord', 'Name', '')
+  on conflict (user_id) do update set
+    first_name = excluded.first_name,
+    last_name = excluded.last_name,
+    phone = excluded.phone;
+
+  -- The signup trigger initially made every account a pending tenant.
+  delete from public.tenants
+  where id = 'tenant-' || landlord_id::text
+    and user_id = landlord_id
+    and account_status = 'pending';
+end;
+$$;
+```
+
+Sign out and back in so the app reloads the landlord profile. Provision additional caretakers and landlords by creating their accounts, then setting their `profiles.role` and adding a matching `staff_profiles` row through trusted admin SQL.
+
+## 4. Add your property and rooms
+
+For a fresh project, review `supabase/seed.sql`, change the property name, address, electricity rate, and rents to your actual values, then run it once in the SQL Editor. It adds one house, two room types, and five vacant starter rooms. The inserts do nothing to rows with those IDs that already exist.
+
+After setup, use the landlord account to manage rooms and test tenant signup, approval, billing, receipt upload, and password recovery. A new native build is needed for the `boardinghouse` deep-link scheme to open the password-reset screen. Keep the Firebase project intact as a backup until the Supabase version is confirmed working.

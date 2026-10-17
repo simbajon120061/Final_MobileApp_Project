@@ -303,13 +303,16 @@ export default function LoginScreen({ onLoginSuccess }) {
   const horizontalPadding = width >= 768 ? 32 : compact ? 18 : 22;
 
   const [formMode, setFormMode] = useState('login');
+  const [confirmationEmail, setConfirmationEmail] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
   const [signupToastOpacity] = useState(() => new Animated.Value(0));
   const signupToastTimer = useRef(null);
+  const registrationInFlight = useRef(false);
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -367,6 +370,7 @@ export default function LoginScreen({ onLoginSuccess }) {
   };
 
   const handleRegister = async () => {
+    if (registrationInFlight.current) return;
     if (!privacyAccepted) {
       setMessage({ type: 'error', text: 'Please review and accept the Data Privacy Consent before creating your account.' });
       return;
@@ -380,7 +384,7 @@ export default function LoginScreen({ onLoginSuccess }) {
       setMessage({ type: 'error', text: 'Mobile number must be 11 digits (e.g. 09123456789).' });
       return;
     }
-    if (password.toLowerCase() !== confirmPassword.toLowerCase()) {
+    if (password !== confirmPassword) {
       setMessage({ type: 'error', text: 'Your passwords do not match.' });
       return;
     }
@@ -391,6 +395,7 @@ export default function LoginScreen({ onLoginSuccess }) {
 
     Keyboard.dismiss();
     setMessage(null);
+    registrationInFlight.current = true;
     setLoading(true);
     try {
       const user = await registerUser({
@@ -399,11 +404,21 @@ export default function LoginScreen({ onLoginSuccess }) {
         password,
         phone: cleanPhone,
       });
-      setLoading(false);
+      if (user?.requiresEmailConfirmation) {
+        setConfirmationEmail(user.email || email.trim());
+        setEmail(user.email || email.trim());
+        setPassword('');
+        setConfirmPassword('');
+        setShowPassword(false);
+        setMessage(null);
+        return;
+      }
       onLoginSuccess?.(user);
     } catch (error) {
-      setLoading(false);
       setMessage({ type: 'error', text: error?.message || 'We could not create your account. Please try again.' });
+    } finally {
+      registrationInFlight.current = false;
+      setLoading(false);
     }
   };
 
@@ -501,7 +516,7 @@ export default function LoginScreen({ onLoginSuccess }) {
         <ScrollView
           style={styles.formContent}
           contentContainerStyle={styles.formContentInner}
-          scrollEnabled={isRegistering}
+          scrollEnabled={isRegistering || !!confirmationEmail}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={isRegistering}
@@ -513,24 +528,64 @@ export default function LoginScreen({ onLoginSuccess }) {
             borderColor: palette.border,
             padding: screenHeight < 700 ? 18 : 24,
           }]}>
-            <AuthModeSelector
-              value={formMode}
-              onChange={(mode) => { setFormMode(mode); setMessage(null); setPrivacyAccepted(false); }}
-              palette={palette}
-            />
+            {confirmationEmail ? (
+              <View style={{ alignItems: 'center', paddingVertical: 18 }}>
+                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: palette.successBg, alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+                  <Ionicons name="mail-open-outline" size={30} color={palette.success} />
+                </View>
+                <Text style={[styles.formTitle, { color: palette.text, fontSize: Math.round(23 * fontScale), textAlign: 'center' }]}>
+                  Check your email
+                </Text>
+                <Text style={[styles.formSubtitle, { color: palette.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 18 }]}>
+                  Your account is created. Open the confirmation link we sent to:
+                </Text>
+                <Text style={{ color: palette.text, fontSize: 16, fontWeight: '700', textAlign: 'center', marginBottom: 18 }}>
+                  {confirmationEmail}
+                </Text>
+                <Text style={[styles.formSubtitle, { color: palette.textSecondary, textAlign: 'center', marginBottom: 22 }]}>
+                  After confirming, come back here to sign in. Check your spam folder if you don’t see the email.
+                </Text>
+                <AuthPrimaryButton
+                  label="Continue to sign in"
+                  loading={false}
+                  onPress={() => {
+                    setConfirmationEmail('');
+                    setFormMode('login');
+                    setPassword('');
+                    setShowPassword(false);
+                    setShowConfirmPassword(false);
+                    setMessage(null);
+                  }}
+                  palette={palette}
+                />
+              </View>
+            ) : (
+              <>
+                <AuthModeSelector
+                  value={formMode}
+                  onChange={(mode) => {
+                    setFormMode(mode);
+                    setEmail('');
+                    setMessage(null);
+                    setPrivacyAccepted(false);
+                    setShowPassword(false);
+                    setShowConfirmPassword(false);
+                  }}
+                  palette={palette}
+                />
 
-            <Text style={[styles.formTitle, { color: palette.text, fontSize: Math.round(21 * fontScale) }]}>
-              {isRegistering ? 'Create your boarder account' : 'Sign in to your account'}
-            </Text>
-            <Text style={[styles.formSubtitle, { color: palette.textSecondary }]}>
-              {isRegistering
-                ? 'Set up your account to stay on top of your home.'
-                : 'View your room, payments, and requests.'}
-            </Text>
+                <Text style={[styles.formTitle, { color: palette.text, fontSize: Math.round(21 * fontScale) }]}>
+                  {isRegistering ? 'Create your boarder account' : 'Sign in to your account'}
+                </Text>
+                <Text style={[styles.formSubtitle, { color: palette.textSecondary }]}>
+                  {isRegistering
+                    ? 'Set up your account to stay on top of your home.'
+                    : 'View your room, payments, and requests.'}
+                </Text>
 
-            {!(isRegistering && message?.type === 'error') && <Message message={message} palette={palette} />}
+                {!(isRegistering && message?.type === 'error') && <Message message={message} palette={palette} />}
 
-            {isRegistering ? (
+                {isRegistering ? (
               <>
                 <AuthFormField
                   label="Full name"
@@ -588,13 +643,14 @@ export default function LoginScreen({ onLoginSuccess }) {
                   icon="shield-checkmark-outline"
                   palette={palette}
                   placeholder="Enter your password again"
-                  secureTextEntry={!showPassword}
+                  secureTextEntry={!showConfirmPassword}
                   autoCapitalize="none"
                   autoComplete="new-password"
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   returnKeyType="go"
                   onSubmitEditing={handleRegister}
+                  right={<PasswordVisibilityButton visible={showConfirmPassword} onPress={() => setShowConfirmPassword((value) => !value)} palette={palette} />}
                 />
 
                 <TouchableOpacity
@@ -662,15 +718,17 @@ export default function LoginScreen({ onLoginSuccess }) {
 
                 <AuthPrimaryButton label="Sign in" loading={loading} onPress={handleSignIn} palette={palette} />
               </>
+                )}
+
+                <View style={styles.footer}>
+                  <Text style={[styles.footerText, { color: palette.textSecondary }]}>
+                    {isRegistering ? 'Already have an account? Use Sign In above.' : 'Tenant access for Nads & Gracy residents.'}
+                  </Text>
+                </View>
+
+                <Text style={[styles.securityCaption, { color: palette.muted }]}>Secure access for your boarding house</Text>
+              </>
             )}
-
-            <View style={styles.footer}>
-              <Text style={[styles.footerText, { color: palette.textSecondary }]}>
-                {isRegistering ? 'Already have an account? Use Sign In above.' : 'Tenant access for Nads & Gracy residents.'}
-              </Text>
-            </View>
-
-            <Text style={[styles.securityCaption, { color: palette.muted }]}>Secure access for your boarding house</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

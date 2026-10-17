@@ -1,6 +1,6 @@
 import ScreenSkeleton from '../../components/ScreenSkeleton';
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { 
   isMobile, 
@@ -12,12 +12,14 @@ import {
   cardShadow
 } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
+import RecordPaymentModal from '../../components/landlord/RecordPaymentModal';
 import {
   getRevenue,
   getRentBilling,
   getUtilityBills,
   updateUtilityBill,
 } from '../../services/dataService';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 const getCurrentBillingPeriod = () => {
   const now = new Date();
@@ -25,16 +27,79 @@ const getCurrentBillingPeriod = () => {
 };
 
 const formatBillingPeriod = (period) => new Date(`${period}-01T12:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+const BILLING_PAGE_SIZE = 4;
+
+function BillingPagination({ page, pageCount, onPageChange, colors }) {
+  if (pageCount <= 1) return null;
+
+  const visiblePageCount = Math.min(pageCount, 4);
+  const firstVisiblePage = Math.min(Math.max(0, page - 1), pageCount - visiblePageCount);
+  const visiblePages = Array.from({ length: visiblePageCount }, (_, index) => firstVisiblePage + index);
+
+  const buttonStyle = (disabled = false) => ({
+    width: 40,
+    height: 44,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    opacity: disabled ? 0.4 : 1,
+  });
+
+  const arrowButton = (label, icon, target, disabled) => (
+    <TouchableOpacity
+      key={label}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={disabled}
+      onPress={() => onPageChange(target)}
+      style={buttonStyle(disabled)}
+    >
+      <Ionicons name={icon} size={17} color={colors.text} />
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 8 }}>
+      {arrowButton('Previous page', 'chevron-back', page - 1, page === 0)}
+      {visiblePages.map((pageIndex) => (
+        <TouchableOpacity
+          key={`page-${pageIndex}`}
+          accessibilityRole="button"
+          accessibilityLabel={`Page ${pageIndex + 1}`}
+          accessibilityState={{ selected: pageIndex === page }}
+          onPress={() => onPageChange(pageIndex)}
+          style={{
+            ...buttonStyle(),
+            backgroundColor: pageIndex === page ? colors.accent : colors.card,
+            borderWidth: pageIndex === page ? 0 : 1,
+            opacity: 1,
+          }}
+        >
+          <Text style={{ fontSize: fs(15), fontWeight: '700', color: pageIndex === page ? '#fff' : colors.text }}>{pageIndex + 1}</Text>
+        </TouchableOpacity>
+      ))}
+      {arrowButton('Next page', 'chevron-forward', page + 1, page >= pageCount - 1)}
+    </View>
+  );
+}
 
 export default function BillingScreen() {
   const { colors } = useTheme();
   const [activeTab, setActiveTab] = useState('rent');
+  const [rentPage, setRentPage] = useState(0);
+  const [utilityPage, setUtilityPage] = useState(0);
   const [rentBilling, setRentBilling] = useState([]);
   const [utilityBills, setUtilityBills] = useState([]);
   const [revenueSummary, setRevenueSummary] = useState({ collected: 0, outstanding: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editingBill, setEditingBill] = useState(null);
+  const [selectedRentItem, setSelectedRentItem] = useState(null);
+  const [paymentTenant, setPaymentTenant] = useState(null);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [editValues, setEditValues] = useState({ monthlyRent: '', consumedKwh: '', ratePerKwh: '' });
   const [editError, setEditError] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
@@ -42,6 +107,13 @@ export default function BillingScreen() {
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
   const billingPeriod = getCurrentBillingPeriod();
+  const rentPageCount = Math.ceil(rentBilling.length / BILLING_PAGE_SIZE);
+  const utilityPageCount = Math.ceil(utilityBills.length / BILLING_PAGE_SIZE);
+
+  useEffect(() => {
+    setRentPage((page) => Math.min(page, Math.max(0, rentPageCount - 1)));
+    setUtilityPage((page) => Math.min(page, Math.max(0, utilityPageCount - 1)));
+  }, [rentPageCount, utilityPageCount]);
 
   const reloadBillingData = async () => {
     const [rentData, utilityData, revenueData] = await Promise.all([
@@ -77,6 +149,18 @@ export default function BillingScreen() {
       isMounted = false;
     };
   }, []);
+
+  useRealtimeRefresh('landlord-billing', [
+    { table: 'invoices' },
+    { table: 'payments' },
+    { table: 'payment_proofs' },
+    { table: 'utility_readings' },
+    { table: 'leases' },
+    { table: 'tenants' },
+    { table: 'rooms' },
+  ], () => reloadBillingData().catch((err) => {
+    console.warn('Could not refresh live billing data:', err.message || err);
+  }));
 
   const totalCollected = revenueSummary.collected;
   const totalOutstanding = revenueSummary.outstanding;
@@ -114,6 +198,23 @@ export default function BillingScreen() {
     } finally {
       setSavingEdit(false);
     }
+  };
+
+  const openRecordPayment = () => {
+    if (!selectedRentItem) return;
+    setPaymentTenant(selectedRentItem);
+    setSelectedRentItem(null);
+    setPaymentModalVisible(true);
+  };
+
+  const closeRecordPayment = () => {
+    setPaymentModalVisible(false);
+    setPaymentTenant(null);
+  };
+
+  const handlePaymentSuccess = async () => {
+    closeRecordPayment();
+    await reloadBillingData();
   };
 
   if (loading) return <ScreenSkeleton />;
@@ -237,7 +338,10 @@ export default function BillingScreen() {
           }}>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => setActiveTab('rent')}
+              onPress={() => {
+                setRentPage(0);
+                setActiveTab('rent');
+              }}
               style={{
                 flex: 1,
                 minHeight: 44,
@@ -258,7 +362,10 @@ export default function BillingScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => setActiveTab('utility')}
+              onPress={() => {
+                setUtilityPage(0);
+                setActiveTab('utility');
+              }}
               style={{
                 flex: 1,
                 minHeight: 44,
@@ -318,10 +425,14 @@ export default function BillingScreen() {
                 <Text style={{ color: colors.textMuted, fontSize: fs(14) }}>No rent billing records found.</Text>
               </View>
             ) : (
-              rentBilling.map((item) => (
+              <>
+              {rentBilling.slice(rentPage * BILLING_PAGE_SIZE, (rentPage + 1) * BILLING_PAGE_SIZE).map((item) => (
                 <TouchableOpacity
                   key={item.id} 
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View billing details for ${item.name}`}
+                  onPress={() => setSelectedRentItem(item)}
                   style={{ 
                     ...cardStyle,
                     backgroundColor: colors.card,
@@ -387,7 +498,8 @@ export default function BillingScreen() {
                     </View>
                   </View>
                 </TouchableOpacity>
-              ))
+              ))}
+              </>
             )
           ) : (
             // Utility Bills List
@@ -396,7 +508,8 @@ export default function BillingScreen() {
                 <Text style={{ color: colors.textMuted, fontSize: fs(14) }}>No utility bills found.</Text>
               </View>
             ) : (
-              utilityBills.map((item) => (
+              <>
+              {utilityBills.slice(utilityPage * BILLING_PAGE_SIZE, (utilityPage + 1) * BILLING_PAGE_SIZE).map((item) => (
                 <View
                   key={item.id} 
                   style={{ 
@@ -467,11 +580,22 @@ export default function BillingScreen() {
                     <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.accent }}>{item.invoiceId ? 'Edit bill' : 'Create bill'}</Text>
                   </TouchableOpacity>
                 </View>
-              ))
+              ))}
+              </>
             )
           )}
         </View>
       </ScrollView>
+
+      {(activeTab === 'rent' ? rentPageCount : utilityPageCount) > 1 && (
+        <View style={{ paddingHorizontal: padding, paddingBottom: spacing.sm, paddingTop: spacing.xs, backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+          {activeTab === 'rent' ? (
+            <BillingPagination page={rentPage} pageCount={rentPageCount} onPageChange={setRentPage} colors={colors} />
+          ) : (
+            <BillingPagination page={utilityPage} pageCount={utilityPageCount} onPageChange={setUtilityPage} colors={colors} />
+          )}
+        </View>
+      )}
 
       <Modal visible={!!editingBill} transparent animationType="fade" onRequestClose={() => !savingEdit && setEditingBill(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
@@ -536,16 +660,90 @@ export default function BillingScreen() {
 
             {!!editError && <Text style={{ color: colors.dangerText, fontSize: fs(13), marginBottom: 12 }}>{editError}</Text>}
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-              <TouchableOpacity onPress={() => setEditingBill(null)} disabled={savingEdit} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: colors.bg }}>
-                <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text }}>Cancel</Text>
+              <TouchableOpacity onPress={() => setEditingBill(null)} disabled={savingEdit} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: colors.dangerText }}>
+                <Text style={{ fontSize: fs(14), fontWeight: '700', color: '#fff' }}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={saveBillEdit} disabled={savingEdit} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: colors.accent, opacity: savingEdit ? 0.6 : 1 }}>
+              <TouchableOpacity onPress={saveBillEdit} disabled={savingEdit} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: colors.successText, opacity: savingEdit ? 0.6 : 1 }}>
                 <Text style={{ fontSize: fs(14), fontWeight: '800', color: '#fff' }}>{savingEdit ? 'Saving…' : 'Save bill'}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={Boolean(selectedRentItem)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedRentItem(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 18 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close billing details"
+            onPress={() => setSelectedRentItem(null)}
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+          />
+          {selectedRentItem && (
+            <View style={{ width: '100%', maxWidth: 460, maxHeight: '85%', backgroundColor: colors.card, borderRadius: 18, borderWidth: 1, borderColor: colors.cardBorder, padding: 20 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <Text style={{ fontSize: fs(19), fontWeight: '800', color: colors.text }}>Billing details</Text>
+                <TouchableOpacity onPress={() => setSelectedRentItem(null)} accessibilityRole="button" accessibilityLabel="Close" style={{ padding: 4 }}>
+                  <Ionicons name="close" size={23} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: colors.bg, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 13, backgroundColor: selectedRentItem.color, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: fs(14), fontWeight: '800', color: '#fff' }}>{selectedRentItem.initials}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text }}>{selectedRentItem.name}</Text>
+                    <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginTop: 3 }}>Room {selectedRentItem.roomNumber}</Text>
+                  </View>
+                  <View style={{ backgroundColor: selectedRentItem.status === 'paid' ? colors.successBg : selectedRentItem.status === 'unbilled' ? colors.bg : colors.dangerBg, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 14 }}>
+                    <Text style={{ fontSize: fs(11), fontWeight: '800', color: selectedRentItem.status === 'paid' ? colors.successText : selectedRentItem.status === 'unbilled' ? colors.textMuted : colors.dangerText, textTransform: 'capitalize' }}>{selectedRentItem.status}</Text>
+                  </View>
+                </View>
+
+                {[
+                  ['Billing period', formatBillingPeriod(billingPeriod)],
+                  ['Monthly rent', `₱${Number(selectedRentItem.amount).toLocaleString()}`],
+                  ['Invoice total', selectedRentItem.status === 'unbilled' ? 'Not invoiced' : `₱${Number(selectedRentItem.totalAmount).toLocaleString()}`],
+                  ['Paid', `₱${Number(selectedRentItem.status === 'unbilled' ? 0 : selectedRentItem.totalAmount - selectedRentItem.balance).toLocaleString()}`],
+                  ['Outstanding balance', `₱${Number(selectedRentItem.balance).toLocaleString()}`],
+                  ['Due date', selectedRentItem.dueDate],
+                ].map(([label, value]) => (
+                  <View key={label} style={{ marginBottom: 11 }}>
+                    <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textSecondary, marginBottom: 5 }}>{label}</Text>
+                    <View style={{ minHeight: 43, justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.bg }}>
+                      <Text style={{ fontSize: fs(14), fontWeight: label === 'Outstanding balance' ? '800' : '600', color: label === 'Outstanding balance' && selectedRentItem.balance > 0 ? colors.dangerText : colors.text }}>{value}</Text>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+
+              <View style={{ marginTop: 8 }}>
+                {selectedRentItem.balance > 0 && selectedRentItem.status !== 'unbilled' && (
+                  <TouchableOpacity onPress={openRecordPayment} style={{ minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: colors.successText }}>
+                    <Text style={{ fontSize: fs(14), fontWeight: '800', color: '#fff' }}>Edit payment</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {paymentTenant && (
+        <RecordPaymentModal
+          visible={paymentModalVisible}
+          tenant={paymentTenant}
+          onClose={closeRecordPayment}
+          onSuccess={handlePaymentSuccess}
+        />
+      )}
 
 
     </View>

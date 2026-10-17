@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCurrentTenant, getTenantBillingBreakdown, getAnnouncements, getTenantNotifications } from '../../services/dataService';
 import AnnouncementDetailsModal from '../../components/AnnouncementDetailsModal';
-import TenantApplicationStatusCard from '../../components/tenant/TenantApplicationStatusCard';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 const getAnnouncementTime = (announcement) => {
   const idTime = Number(String(announcement.announcement_id || announcement.id || '').match(/\d{10,}/)?.[0]);
@@ -14,7 +14,7 @@ const getAnnouncementTime = (announcement) => {
   return Number.isNaN(dateTime) ? 0 : dateTime;
 };
 
-export default function TenantHomeScreen({ user, onNavigateToNotifications }) {
+export default function TenantHomeScreen({ user, onNavigateToNotifications, onNavigateToApplication }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1180 : '100%';
@@ -26,14 +26,25 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications }) {
   const [latestNotice, setLatestNotice] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+  const hasLoadedOnce = useRef(false);
 
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+
+  useRealtimeRefresh(`tenant-home-${user?.tenant_id || 'unknown'}`, [
+    { table: 'tenants', filter: `id=eq.${user?.tenant_id || ''}` },
+    { table: 'tenant_notifications', filter: `tenant_id=eq.${user?.tenant_id || ''}` },
+    { table: 'announcements' },
+    { table: 'invoices' },
+    { table: 'payment_proofs', filter: `tenant_id=eq.${user?.tenant_id || ''}` },
+    { table: 'room_assignment_requests', filter: `tenant_id=eq.${user?.tenant_id || ''}` },
+    { table: 'leases', filter: `tenant_id=eq.${user?.tenant_id || ''}` },
+  ], () => setRefreshKey((key) => key + 1), Boolean(user?.tenant_id));
 
   useEffect(() => {
     let isMounted = true;
     const fetchTenantData = async () => {
       try {
-        setLoading(true);
+        if (!hasLoadedOnce.current) setLoading(true);
         setError(null);
         const [tenantData, billingData, announcementsData, notificationsData] = await Promise.all([
           getCurrentTenant(user?.tenant_id),
@@ -62,6 +73,7 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications }) {
       } finally {
         if (isMounted) {
           setLoading(false);
+          hasLoadedOnce.current = true;
         }
       }
     };
@@ -76,7 +88,7 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications }) {
     return (
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.bg }}
-        contentContainerStyle={{ paddingBottom: 24, alignItems: isDesktop ? 'center' : 'stretch' }}
+        contentContainerStyle={{ paddingBottom: spacing.sm, alignItems: isDesktop ? 'center' : 'stretch' }}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
@@ -131,7 +143,7 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications }) {
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingBottom: 24,
+          paddingBottom: spacing.sm,
           alignItems: isDesktop ? 'center' : 'stretch',
         }}
         showsVerticalScrollIndicator={false}
@@ -161,14 +173,8 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications }) {
               Your home, billing, and property updates in one place.
             </Text>
           </View>
-            <TenantApplicationStatusCard
-              tenant={tenant}
-              tenantId={user?.tenant_id}
-              refreshKey={refreshKey}
-              onChanged={() => setRefreshKey((key) => key + 1)}
-            />
             {tenant.accountStatus === 'approved' ? (
-            <View style={{ paddingHorizontal: padding, gap: spacing.xl, paddingBottom: 24 }}>
+            <View style={{ paddingHorizontal: padding, gap: spacing.xl, paddingBottom: 0 }}>
             {/* ── Outstanding Balance Hero Card ────────────── */}
             <View style={{
               borderRadius: 26,
@@ -432,7 +438,23 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications }) {
             </View>
             </View>
           </View>
-            ) : null}
+            ) : (
+              <View style={{ paddingHorizontal: padding, paddingBottom: 24 }}>
+                <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 22, alignItems: 'center' }}>
+                  <View style={{ width: 52, height: 52, borderRadius: 18, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <Ionicons name="home-outline" size={24} color={colors.accent} />
+                  </View>
+                  <Text style={{ fontSize: fs(18), color: colors.text, fontWeight: '800', textAlign: 'center' }}>Welcome to your tenant dashboard</Text>
+                  <Text style={{ fontSize: fs(13), color: colors.textSecondary, lineHeight: 20, textAlign: 'center', marginTop: 7 }}>
+                    Your room and move-in details are available on the Application page.
+                  </Text>
+                  <TouchableOpacity onPress={onNavigateToApplication} accessibilityRole="button" style={{ marginTop: 16, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 11, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ color: '#fff', fontSize: fs(13), fontWeight: '800' }}>View application</Text>
+                    <Ionicons name="arrow-forward" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
         </View>
       </ScrollView>
 
@@ -469,7 +491,7 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications }) {
                 </Text>
               </View>
             <TouchableOpacity onPress={() => setShowReceiptModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="close-circle" size={26} color={colors.textMuted} />
+                <Ionicons name="close-circle" size={26} color={colors.dangerText} />
               </TouchableOpacity>
             </View>
 
@@ -515,7 +537,7 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications }) {
               activeOpacity={0.8}
               onPress={() => setShowReceiptModal(false)}
               style={{
-                backgroundColor: colors.primary,
+                backgroundColor: colors.dangerText,
                 paddingVertical: 14,
                   borderRadius: 12,
                   overflow: 'hidden',
@@ -524,7 +546,7 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications }) {
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>
+              <Text style={{ fontSize: fs(15), fontWeight: '800', color: '#fff' }}>
                 Close Receipt
               </Text>
             </TouchableOpacity>

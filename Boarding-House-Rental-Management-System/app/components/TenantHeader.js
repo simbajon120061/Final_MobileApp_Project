@@ -232,9 +232,9 @@ export default function TenantHeader({
                 activeOpacity={0.75}
                 accessibilityRole="button"
                 accessibilityLabel="Cancel logout"
-                style={{ minHeight: 42, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 11, borderWidth: 1, borderColor: colors.cardBorder }}
+                style={{ minHeight: 42, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 11, backgroundColor: colors.bg }}
               >
-                <Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '700' }}>Cancel</Text>
+                <Text style={{ color: '#4A4640', fontSize: 14, fontWeight: '700' }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {

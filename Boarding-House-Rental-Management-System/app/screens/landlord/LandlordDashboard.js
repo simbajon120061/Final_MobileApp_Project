@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getBoardingHouseConfig, getRevenue, getOccupancyStats, getUnpaidStats, getIssueStats, getUnpaidTenants } from '../../services/dataService';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 const getCurrentPeriod = () => {
   const now = new Date();
@@ -36,7 +37,21 @@ export default function OwnerDashboard() {
   const [unpaidTenants, setUnpaidTenants] = useState([]);
   const [selectedPeriod, setSelectedPeriod] = useState(getCurrentPeriod);
   const [showAllUnpaid, setShowAllUnpaid] = useState(false);
+  const [realtimeVersion, setRealtimeVersion] = useState(0);
   const revenueCache = useRef({});
+
+  useRealtimeRefresh('landlord-dashboard', [
+    { table: 'rooms' },
+    { table: 'tenants' },
+    { table: 'leases' },
+    { table: 'invoices' },
+    { table: 'payments' },
+    { table: 'complaints' },
+    { table: 'utility_readings' },
+  ], () => {
+    revenueCache.current = {};
+    setRealtimeVersion((version) => version + 1);
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +83,7 @@ export default function OwnerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [realtimeVersion]);
 
   useEffect(() => {
     const cachedRevenue = revenueCache.current[selectedPeriod];
@@ -99,7 +114,7 @@ export default function OwnerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [selectedPeriod]);
+  }, [selectedPeriod, realtimeVersion]);
 
   if (loading) return <ScreenSkeleton />;
   if (error) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}><Text style={{ color: colors.danger, fontSize: 16 }}>{error}</Text></View>;

@@ -186,7 +186,7 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
           activeOpacity={0.8}
           accessibilityRole="button"
           accessibilityLabel="Save all changes"
-          style={{ minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: saving || loading ? colors.textMuted : colors.primary, marginTop: 2 }}
+          style={{ minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: saving || loading ? colors.textMuted : colors.successText, marginTop: 2 }}
         >
           {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Ionicons name="save-outline" size={19} color={colors.onPrimary} />}
           <Text style={{ color: colors.onPrimary, fontSize: 15, fontWeight: '800', marginLeft: 9 }}>{saving ? 'Saving…' : 'Save all changes'}</Text>

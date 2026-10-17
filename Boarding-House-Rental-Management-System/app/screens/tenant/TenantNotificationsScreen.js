@@ -7,6 +7,7 @@ import { isMobile, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } f
 import { getTenantNotifications, markNotificationAsRead, dismissTenantNotification, getAnnouncements } from '../../services/dataService';
 import AnnouncementDetailsModal from '../../components/AnnouncementDetailsModal';
 import { getLastSeen, markAnnouncementsSeen, getAnnouncementTime, getDismissedAnnouncementIds, dismissAnnouncement } from '../../utils/announcementSeen';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 const timeOf = (item) => {
   const parsed = Date.parse(item.created_at);
@@ -22,11 +23,11 @@ export default function TenantNotificationsScreen({ user }) {
   const [error, setError] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+  const tenantId = user?.tenant_id || user?.room || '2';
 
   const loadNotifications = async () => {
     try {
       setError(null);
-      const tenantId = user?.tenant_id || user?.room || '2';
       const uid = user?.uid || user?.tenant_id;
       const [data, announcements, lastSeen, dismissedAnnouncementIds] = await Promise.all([
         getTenantNotifications(tenantId),
@@ -62,6 +63,11 @@ export default function TenantNotificationsScreen({ user }) {
   useEffect(() => {
     loadNotifications();
   }, [user]);
+
+  useRealtimeRefresh(`tenant-notifications-${tenantId}`, [
+    { table: 'tenant_notifications', filter: `tenant_id=eq.${tenantId}` },
+    { table: 'announcements' },
+  ], loadNotifications, Boolean(user?.tenant_id));
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -194,7 +200,7 @@ export default function TenantNotificationsScreen({ user }) {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: padding, paddingTop: isMobile ? 16 : 40, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: padding, paddingTop: isMobile ? 16 : 40, paddingBottom: spacing.sm }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
         {/* Header */}
@@ -294,7 +300,7 @@ export default function TenantNotificationsScreen({ user }) {
                           hitSlop={8}
                           style={{ position: 'absolute', top: 8, right: 8, zIndex: 2, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}
                         >
-                          <Ionicons name="close" size={15} color={colors.textMuted} />
+                          <Ionicons name="close" size={15} color={colors.dangerText} />
                         </TouchableOpacity>
                         {/* Top row: icon, category tag, time */}
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>

@@ -1,456 +1,266 @@
-// Authentication Service Layer
-// Integrates Firebase Auth with the 3NF USERS and TENANTS collections.
-// Accounts are authenticated with Firebase and profiles are stored in Firestore.
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
+import { Platform } from 'react-native';
 
-import { auth, db, isFirebaseConfigured } from '../utils/firebase';
-import { COLLECTIONS } from './databaseSchema';
-
-function getFriendlyAuthError(error, action) {
-  switch (error?.code) {
-    case 'auth/email-already-in-use':
-      return new Error('An account already exists for this email. Please sign in instead, or use Forgot password if you cannot access it.');
-    case 'auth/invalid-credential':
-    case 'auth/wrong-password':
-      return new Error('Email or password is incorrect. Please try again or use Forgot password.');
-    case 'auth/user-not-found':
-      return new Error('No account exists for this email. Check the address or contact the property administrator.');
-    case 'auth/configuration-not-found':
-      return new Error('Firebase Authentication is not configured for this project. Enable Email/Password in Firebase Console.');
-    case 'auth/operation-not-allowed':
-      return new Error('Email and password sign-in is disabled for this Firebase project. Enable it under Firebase Console → Authentication → Sign-in method.');
-    case 'auth/invalid-api-key':
-    case 'auth/api-key-not-valid.-please-pass-a-valid-api-key.':
-      return new Error('Firebase rejected this app’s API key. Check the Firebase configuration in app/utils/firebase.js.');
-    case 'auth/app-not-authorized':
-      return new Error('This app is not authorized for the Firebase project. Check its Firebase app configuration.');
-    case 'auth/unauthorized-domain':
-      return new Error('This website domain is not authorized for Firebase Authentication. Add it in Firebase Console → Authentication → Settings → Authorized domains.');
-    case 'auth/user-disabled':
-      return new Error('This account has been disabled. Contact the property administrator.');
-    case 'auth/too-many-requests':
-      return new Error('There have been too many sign-in attempts. Wait a while, then try again.');
-    case 'auth/weak-password':
-      return new Error('Choose a password with at least 6 characters.');
-    case 'auth/invalid-email':
-      return new Error('Enter a valid email address.');
-    case 'permission-denied':
-    case 'firestore/permission-denied':
-      return new Error('Firestore rejected this request. Publish the project Firestore rules, then try again.');
-    case 'auth/network-request-failed':
-      return new Error('Could not connect to Firebase. Check your internet connection and try again.');
-    default:
-      console.warn(`Firebase ${action} failed:`, error?.code || 'unknown error', error?.message || error);
-      return new Error(`Firebase could not ${action} (${error?.code || 'unknown error'}). Check the error code and try again.`);
+function requireSupabase() {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase is not configured. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, then restart the app.');
   }
 }
 
-async function getUserSessionFromFirebaseUser(fbUser) {
-  if (!fbUser || !db) return null;
-
-  const { doc, getDoc, collection, query, where, getDocs, setDoc } = await import('firebase/firestore');
-  const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, fbUser.uid));
-  let userProfile = userDoc.exists() ? userDoc.data() : null;
-
-  if (!userProfile?.role) {
-    // Recover Auth accounts whose original signup wrote a tenant record but did
-    // not finish creating the matching users document. The tenant query is
-    // constrained to records linked to this authenticated UID, and Firestore
-    // rules permit users to create only their own tenant user document.
-    if (!userDoc.exists() && fbUser.email) {
-      const tenantQuery = query(collection(db, COLLECTIONS.TENANTS), where('user_id', '==', fbUser.uid));
-      const tenantSnapshot = await getDocs(tenantQuery);
-      const linkedTenant = tenantSnapshot.docs[0];
-      if (linkedTenant) {
-        userProfile = {
-          id: fbUser.uid,
-          email: fbUser.email,
-          role: 'tenant',
-          created_at: new Date().toISOString(),
-        };
-        await setDoc(doc(db, COLLECTIONS.USERS, fbUser.uid), userProfile);
-      }
-    }
+function getFriendlyAuthError(error, action) {
+  const message = String(error?.message || '').toLowerCase();
+  if (message.includes('already registered') || message.includes('already been registered')) {
+    return new Error('An account already exists for this email. Please sign in instead, or use Forgot password.');
   }
+  if (message.includes('invalid login credentials')) {
+    return new Error('Email or password is incorrect. Please try again or use Forgot password.');
+  }
+  if (message.includes('email not confirmed')) {
+    return new Error('Confirm your email using the link we sent, then sign in.');
+  }
+  if (message.includes('password should be at least')) {
+    return new Error('Choose a password with at least 6 characters.');
+  }
+  if (message.includes('rate limit') || message.includes('too many requests')) {
+    return new Error('There have been too many attempts. Wait a while, then try again.');
+  }
+  console.warn(`Supabase ${action} failed:`, error?.code || 'unknown error', error?.message || error);
+  return new Error(`Supabase could not ${action}. ${error?.message || 'Check your connection and try again.'}`);
+}
 
-  if (!userProfile?.role) {
-    const error = new Error('Your account is missing its profile. Please contact the property administrator.');
+async function getUserSessionFromSupabaseUser(authUser) {
+  if (!authUser || !supabase) return null;
+
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, email, role')
+    .eq('id', authUser.id)
+    .maybeSingle();
+  if (profileError) throw profileError;
+  if (!profile?.role) {
+    const error = new Error('Your account profile is not ready yet. Please try signing in again.');
     error.code = 'app/profile-missing';
     throw error;
   }
 
-  const role = userProfile.role;
-  let profile = null;
+  const role = profile.role;
+  let roleProfile = null;
   let tenantId;
-
   if (role === 'tenant') {
-    if (userProfile.tenant_id) {
-      tenantId = userProfile.tenant_id;
-      const tenantDoc = await getDoc(doc(db, COLLECTIONS.TENANTS, tenantId));
-      if (tenantDoc.exists()) profile = tenantDoc.data();
-    } else {
-      const tenantQuery = query(collection(db, COLLECTIONS.TENANTS), where('user_id', '==', fbUser.uid));
-      const tenantSnapshot = await getDocs(tenantQuery);
-      const tenantDoc = tenantSnapshot.docs[0];
-      if (tenantDoc) {
-        profile = tenantDoc.data();
-        tenantId = tenantDoc.id;
-      }
-    }
-  } else if (role === 'landlord' || role === 'owner' || role === 'caretaker') {
-    // Older Firebase setups use owner/caretaker; the app routes both through the landlord portal.
-    const staffDoc = await getDoc(doc(db, COLLECTIONS.STAFF_PROFILES, fbUser.uid));
-    if (staffDoc.exists()) profile = staffDoc.data();
+    const { data, error } = await supabase
+      .from('tenants')
+      .select('id, first_name, last_name, account_status')
+      .eq('user_id', authUser.id)
+      .maybeSingle();
+    if (error) throw error;
+    roleProfile = data;
+    tenantId = data?.id;
+  } else if (['landlord', 'owner', 'caretaker'].includes(role)) {
+    const { data, error } = await supabase
+      .from('staff_profiles')
+      .select('first_name, last_name')
+      .eq('user_id', authUser.id)
+      .maybeSingle();
+    if (error) throw error;
+    roleProfile = data;
   }
 
-  if (!profile && !userProfile.name) {
+  if (!roleProfile) {
     const error = new Error('Your account is missing its role profile. Ask the property owner to finish setting it up.');
     error.code = 'app/role-profile-missing';
     throw error;
   }
 
-  const name = profile
-    ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
-    : userProfile.name;
-
+  const name = `${roleProfile.first_name || ''} ${roleProfile.last_name || ''}`.trim();
   return {
-    uid: fbUser.uid,
-    email: fbUser.email,
-    name: name || fbUser.displayName || fbUser.email,
+    uid: authUser.id,
+    email: authUser.email || profile.email,
+    name: name || authUser.user_metadata?.full_name || authUser.email,
     role: role === 'owner' || role === 'caretaker' ? 'landlord' : role,
-    room: role === 'tenant' ? 2 : undefined,
     tenant_id: tenantId,
   };
 }
 
-/**
- * Authenticates user credentials and retrieves their 3NF profile
- */
 export async function loginWithEmail(email, password) {
-  const cleanEmail = email.trim().toLowerCase();
-  const enteredPass = password.trim();
-  const passwordCandidates = [...new Set([
-    enteredPass.toLowerCase(),
-    enteredPass.toUpperCase(),
-    enteredPass,
-  ])];
-
-  if (!isFirebaseConfigured || !auth || !db) {
-    throw new Error('Online sign-in is unavailable right now. Please try again later.');
+  requireSupabase();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim().toLowerCase(),
+    password: String(password ?? ''),
+  });
+  if (error) throw getFriendlyAuthError(error, 'sign in');
+  try {
+    return await getUserSessionFromSupabaseUser(data.user);
+  } catch (profileError) {
+    await supabase.auth.signOut();
+    throw profileError;
   }
-
-  // 1. Live Firebase Authentication (When configured)
-  if (isFirebaseConfigured && auth) {
-    const { signInWithEmailAndPassword } = await import('firebase/auth');
-    let lastCredentialError;
-    for (const candidate of passwordCandidates) {
-      try {
-        const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, candidate);
-        return await getUserSessionFromFirebaseUser(userCredential.user);
-      } catch (error) {
-        // These errors come from Firestore profile lookup after Firebase Auth has
-        // succeeded. Preserve the actionable profile message instead of reporting
-        // it as an unknown Firebase authentication error.
-        if (error?.code?.startsWith('app/')) throw error;
-        if (!['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found'].includes(error?.code)) {
-          throw getFriendlyAuthError(error, 'sign in');
-        }
-        lastCredentialError = error;
-      }
-    }
-    throw getFriendlyAuthError(lastCredentialError, 'sign in');
-  }
-
-  throw new Error('Could not sign in. Please check your email and password.');
 }
 
-/** Sends a secure password-reset link through Firebase Authentication. */
 export async function sendPasswordReset(email) {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail) throw new Error('Enter the email address for your account.');
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-    throw new Error('Enter a valid email address.');
-  }
-  if (!isFirebaseConfigured || !auth) {
-    throw new Error('Password recovery is unavailable right now. Please try again later.');
-  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) throw new Error('Enter a valid email address.');
+  requireSupabase();
+  const webRedirect = Platform.OS === 'web' && typeof window !== 'undefined'
+    ? window.location.origin
+    : null;
+  const redirectTo = process.env.EXPO_PUBLIC_SUPABASE_REDIRECT_URL || webRedirect || 'boardinghouse://auth/reset-password';
+  const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, { redirectTo });
+  if (error) throw getFriendlyAuthError(error, 'send the reset email');
+}
 
+export async function handleAuthRedirect(url) {
+  if (!url || !supabase) return false;
+  let callback;
   try {
-    const { sendPasswordResetEmail } = await import('firebase/auth');
-    await sendPasswordResetEmail(auth, cleanEmail);
-  } catch (error) {
-    // Keep the response the same for unknown accounts to avoid exposing which
-    // email addresses are registered in the app.
-    if (error?.code === 'auth/user-not-found') return;
-    if (error?.code === 'auth/invalid-email') throw new Error('Enter a valid email address.');
-    if (error?.code === 'auth/too-many-requests') throw new Error('Too many reset attempts. Wait a little and try again.');
-    if (error?.code === 'auth/network-request-failed') throw new Error('Could not connect to Firebase. Check your internet connection and try again.');
-    if (error?.code === 'auth/operation-not-allowed') throw new Error('Password reset is disabled for this Firebase project. Enable Email/Password sign-in in Firebase Console.');
-    console.warn('Firebase password reset failed:', error.message || error);
-    throw new Error('Could not send the reset email. Check your connection and try again.');
+    callback = new URL(url);
+  } catch {
+    return false;
   }
+
+  const fragment = new URLSearchParams(callback.hash.replace(/^#/, ''));
+  const type = fragment.get('type') || callback.searchParams.get('type');
+  const isRecovery = type === 'recovery' || callback.pathname.includes('reset-password');
+  const accessToken = fragment.get('access_token');
+  const refreshToken = fragment.get('refresh_token');
+  if (accessToken && refreshToken) {
+    const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    if (error) throw error;
+    return isRecovery;
+  }
+
+  const code = callback.searchParams.get('code');
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) throw error;
+    return isRecovery;
+  }
+  return false;
 }
 
-/**
- * Restores the persisted Firebase session after app reload.
- */
+export async function completePasswordRecovery(password) {
+  requireSupabase();
+  if (String(password ?? '').length < 6) throw new Error('Choose a password with at least 6 characters.');
+  const { data, error } = await supabase.auth.updateUser({ password });
+  if (error) throw getFriendlyAuthError(error, 'update your password');
+  return getUserSessionFromSupabaseUser(data.user);
+}
+
 export async function getCurrentUserSession() {
-  if (!isFirebaseConfigured || !auth || !db || !auth.currentUser) {
-    return null;
-  }
-
-  return getUserSessionFromFirebaseUser(auth.currentUser);
+  requireSupabase();
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return session?.user ? getUserSessionFromSupabaseUser(session.user) : null;
 }
 
-/**
- * Watches Firebase Auth so refresh/reload keeps the app authenticated.
- */
-export async function subscribeToCurrentUser(onUser, onError) {
-  if (!isFirebaseConfigured || !auth || !db) {
+export async function subscribeToCurrentUser(onUser, onError, onPasswordRecovery) {
+  if (!isSupabaseConfigured || !supabase) {
     onUser(null);
     return () => {};
   }
 
-  const { onAuthStateChanged } = await import('firebase/auth');
-  return onAuthStateChanged(auth, async (fbUser) => {
-    try {
-      if (!fbUser) {
-        onUser(null);
-        return;
-      }
-
-      // Auth notifies listeners as soon as account creation succeeds, before
-      // registerUser has necessarily committed the matching Firestore profile.
-      // Give that atomic signup write a short window to finish before treating
-      // an absent profile as an incomplete account and signing the user out.
-      let session;
-      for (let attempt = 0; ; attempt += 1) {
-        try {
-          session = await getUserSessionFromFirebaseUser(fbUser);
-          break;
-        } catch (error) {
-          const signupProfilePending = error?.code === 'app/profile-missing'
-            && attempt < 9
-            && auth.currentUser?.uid === fbUser.uid;
-          if (!signupProfilePending) throw error;
-
-          await new Promise((resolve) => setTimeout(resolve, 300));
-          if (auth.currentUser?.uid !== fbUser.uid) {
-            onUser(null);
-            return;
-          }
+  let active = true;
+  let revision = 0;
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') onPasswordRecovery?.();
+    const currentRevision = ++revision;
+    Promise.resolve().then(async () => {
+      try {
+        const user = session?.user ? await getUserSessionFromSupabaseUser(session.user) : null;
+        if (active && currentRevision === revision) onUser(user);
+      } catch (error) {
+        if (active && currentRevision === revision) {
+          if (onError) onError(error);
+          onUser(null);
         }
       }
-      onUser(session);
-    } catch (error) {
-      console.warn('Could not restore Firebase session:', error.message);
-      // If profile is missing, sign out and let user re-register or contact admin
-      if (error.message.includes('missing its profile') || error.message.includes('missing its role profile')) {
-        try {
-          const { signOut } = await import('firebase/auth');
-          await signOut(auth);
-        } catch (signOutErr) {
-          console.error('Could not sign out incomplete account:', signOutErr);
-        }
-      }
-      if (onError) onError(error);
-      onUser(null);
-    }
+    });
   });
+
+  return () => {
+    active = false;
+    subscription.unsubscribe();
+  };
 }
 
-/**
- * Terminates user session
- */
 export async function logout() {
-  if (isFirebaseConfigured && auth) {
-    try {
-      const { signOut } = await import('firebase/auth');
-      await signOut(auth);
-    } catch (err) {
-      console.warn('Firebase signout error:', err.message);
-    }
-  }
+  if (!isSupabaseConfigured || !supabase) return true;
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
   return true;
 }
 
-/** Update tenant profile fields and, when requested, Firebase credentials. */
 export async function updateTenantAccount({
   tenantId,
   firstName,
   lastName,
   phone = '',
   emergencyContact = '',
-  currentPassword = '',
   newPassword = '',
 }) {
-  const fbUser = auth?.currentUser;
-  if (!fbUser || !db) throw new Error('Your session has expired. Sign in again and retry.');
+  requireSupabase();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) throw new Error('Your session has expired. Sign in again and retry.');
 
   const cleanFirstName = firstName.trim();
   const cleanLastName = lastName.trim();
   const cleanPhone = phone.trim();
   const cleanEmergencyContact = emergencyContact.trim();
-  const cleanNewPassword = newPassword.trim();
+  const cleanNewPassword = String(newPassword ?? '').trim();
   if (!cleanFirstName || !cleanLastName) throw new Error('Enter both your first and last name.');
   if (cleanNewPassword && cleanNewPassword.length < 6) throw new Error('Your new password must have at least 6 characters.');
-  if (cleanNewPassword && !currentPassword) throw new Error('Enter your current password to set a new password.');
-
-  const {
-    EmailAuthProvider,
-    reauthenticateWithCredential,
-    updatePassword,
-    updateProfile,
-  } = await import('firebase/auth');
-  const { collection, doc, query, where, getDocs, writeBatch } = await import('firebase/firestore');
-
-  if (cleanNewPassword) {
-    try {
-      const credential = EmailAuthProvider.credential(fbUser.email, currentPassword);
-      await reauthenticateWithCredential(fbUser, credential);
-    } catch (error) {
-      if (error?.code === 'auth/invalid-credential' || error?.code === 'auth/wrong-password') {
-        throw new Error('Your current password is incorrect.');
-      }
-      throw error;
-    }
-  }
-
-  const tenantQuery = query(collection(db, COLLECTIONS.TENANTS), where('user_id', '==', fbUser.uid));
-  const tenantResults = await getDocs(tenantQuery);
-  const tenantSnapshot = tenantResults.docs.find((snapshot) => snapshot.id === tenantId) || tenantResults.docs[0];
-  if (!tenantSnapshot || tenantSnapshot.data().user_id !== fbUser.uid) {
-    throw new Error('Your tenant profile could not be verified. Contact the property administrator.');
-  }
 
   const fullName = `${cleanFirstName} ${cleanLastName}`;
-  const initials = `${cleanFirstName[0]}${cleanLastName[0]}`.toUpperCase();
-  const batch = writeBatch(db);
-  batch.update(tenantSnapshot.ref, {
-    first_name: cleanFirstName,
-    last_name: cleanLastName,
-    initials,
-    phone: cleanPhone,
-    emergency_contact: cleanEmergencyContact,
-  });
-  batch.update(doc(db, COLLECTIONS.USERS, fbUser.uid), { name: fullName });
-  await batch.commit();
+  const { data: tenant, error: tenantError } = await supabase
+    .from('tenants')
+    .update({
+      first_name: cleanFirstName,
+      last_name: cleanLastName,
+      initials: `${cleanFirstName[0]}${cleanLastName[0]}`.toUpperCase(),
+      phone: cleanPhone,
+      emergency_contact: cleanEmergencyContact,
+    })
+    .eq('id', tenantId)
+    .eq('user_id', user.id)
+    .select('id')
+    .maybeSingle();
+  if (tenantError) throw tenantError;
+  if (!tenant) throw new Error('Your tenant profile could not be verified. Contact the property administrator.');
 
-  try {
-    await updateProfile(fbUser, { displayName: fullName });
-    if (cleanNewPassword) await updatePassword(fbUser, cleanNewPassword);
-  } catch (error) {
-    if (error?.code === 'auth/weak-password') {
-      throw new Error('Your profile was saved, but Firebase rejected the new password. Choose a stronger password and save again.');
-    }
-    if (error?.code === 'auth/requires-recent-login') {
-      throw new Error('Your profile was saved, but your session expired before the password changed. Sign out and back in, then try the password change again.');
-    }
-    throw new Error(`Your profile was saved, but the account update failed: ${error?.message || 'Please try again.'}`);
+  const { error: metadataError } = await supabase.auth.updateUser({ data: { full_name: fullName } });
+  if (metadataError) throw new Error(`Your profile was saved, but account details could not be updated: ${metadataError.message}`);
+  if (cleanNewPassword) {
+    const { error: passwordError } = await supabase.auth.updateUser({ password: cleanNewPassword });
+    if (passwordError) throw new Error(`Your profile was saved, but the password could not be changed: ${passwordError.message}`);
   }
 
-  return { uid: fbUser.uid, name: fullName, tenant_id: tenantSnapshot.id };
+  return { uid: user.id, name: fullName, tenant_id: tenant.id };
 }
 
-/**
- * Registers a new user and creates corresponding 3NF database records
- */
-export async function registerUser({ email, password, name, phone = '', roomNumber = '' }) {
+export async function registerUser({ email, password, name, phone = '' }) {
+  requireSupabase();
   const cleanEmail = email.trim().toLowerCase();
-  const cleanPass = password.trim().toLowerCase();
+  const cleanPassword = String(password ?? '');
   const cleanName = name.trim();
-  // Public self-registration is restricted to tenants. Staff roles are provisioned
-  // by trusted administration in Firebase Authentication and Firestore.
-  const role = 'tenant';
+  if (!cleanEmail || !cleanPassword.trim() || !cleanName) throw new Error('Please fill in all required fields');
+  if (cleanPassword.length < 6) throw new Error('Password must be at least 6 characters');
 
-  if (!cleanEmail || !cleanPass || !cleanName) {
-    throw new Error('Please fill in all required fields');
+  const { data, error } = await supabase.auth.signUp({
+    email: cleanEmail,
+    password: cleanPassword,
+    options: { data: { full_name: cleanName, phone: phone.trim() } },
+  });
+  if (error) throw getFriendlyAuthError(error, 'create your account');
+
+  // With email confirmation enabled, Supabase obfuscates duplicate confirmed
+  // accounts instead of returning a "User already registered" error.
+  if (data.user?.identities?.length === 0) {
+    throw new Error('An account with this email already exists. Sign in or use Forgot password.');
   }
 
-  if (cleanPass.length < 6) {
-    throw new Error('Password must be at least 6 characters');
+  if (!data.session) {
+    return { requiresEmailConfirmation: true, email: cleanEmail };
   }
 
-  if (!isFirebaseConfigured || !auth || !db) {
-    throw new Error('Online registration is unavailable right now. Please try again later.');
-  }
-
-  // Live Firebase Auth Registration (when configured)
-  if (isFirebaseConfigured && auth && db) {
-    try {
-      const { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } = await import('firebase/auth');
-      const { doc, getDoc, writeBatch } = await import('firebase/firestore');
-
-      let fbUser;
-      try {
-        const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
-        fbUser = userCred.user;
-      } catch (createError) {
-        // Auth can succeed before a Firestore rule/network error. Allow retry only for
-        // an existing tenant Auth account whose tenant profile is still missing.
-        if (createError.code !== 'auth/email-already-in-use') throw createError;
-        const existingCred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
-        fbUser = existingCred.user;
-        const existingProfile = await getDoc(doc(db, COLLECTIONS.USERS, fbUser.uid));
-        if (existingProfile.exists()) {
-          if (existingProfile.data().role !== 'tenant') {
-            throw new Error('This email already has an account. Please sign in instead.');
-          }
-          const existingTenant = await getDoc(doc(db, COLLECTIONS.TENANTS, `tenant-${fbUser.uid}`));
-          if (existingTenant.exists()) {
-            throw new Error('This email already has an account. Please sign in instead.');
-          }
-        }
-      }
-
-      await updateProfile(fbUser, { displayName: cleanName });
-
-      const newUserId = fbUser.uid;
-      // Stable IDs make retrying a partially completed signup safe and idempotent.
-      const newTenantId = `tenant-${newUserId}`;
-
-      // Keep the account and its tenant profile in sync in one Firestore commit.
-      const batch = writeBatch(db);
-      batch.set(doc(db, COLLECTIONS.USERS, newUserId), {
-        id: newUserId,
-        email: cleanEmail,
-        role,
-        created_at: new Date().toISOString(),
-      });
-
-      // Room assignment is handled by property staff after approval.
-      if (role === 'tenant' && newTenantId) {
-        const nameParts = cleanName.split(' ');
-        const firstName = nameParts[0] || cleanName;
-        const lastName = nameParts.slice(1).join(' ') || '';
-        const initials = (firstName[0] || '') + (lastName[0] || firstName[1] || 'T').toUpperCase();
-
-        batch.set(doc(db, COLLECTIONS.TENANTS, newTenantId), {
-          id: newTenantId,
-          user_id: newUserId,
-          first_name: firstName,
-          last_name: lastName,
-          initials,
-          phone: phone || '0917-000-0000',
-          avatar_color: '#8b5cf6',
-          account_status: 'pending',
-          registered_at: new Date().toISOString(),
-        });
-
-      }
-      await batch.commit();
-
-      return {
-        uid: newUserId,
-        email: cleanEmail,
-        name: cleanName,
-        role,
-        tenant_id: newTenantId,
-      };
-    } catch (err) {
-      console.warn('Firebase registration failed:', err.message);
-      if (err.message === 'This email already has an account. Please sign in instead.') throw err;
-      throw getFriendlyAuthError(err, 'create your account');
-    }
-  }
-
+  return getUserSessionFromSupabaseUser(data.user);
 }

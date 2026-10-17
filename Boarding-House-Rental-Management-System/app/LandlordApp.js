@@ -21,13 +21,25 @@ import TenantDetailFinancial from './screens/landlord/TenantDetailFinancial';
 // Import navigation
 import LandlordBottomNav from './components/LandlordBottomNav';
 import { getPendingTenantRegistrationCount } from './services/dataService';
+import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 
 export default function LandlordApp({ user, onLogout }) {
   const [activeScreen, setActiveScreen] = useState('dashboard');
   const [menuVisible, setMenuVisible] = useState(false);
   const [navigationParams, setNavigationParams] = useState(null);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
+  const [realtimeVersion, setRealtimeVersion] = useState(0);
   const { isDark, toggleTheme, colors } = useTheme();
+  const menuTopInset = Platform.OS === 'ios'
+    ? safeAreaTop
+    : Platform.OS === 'android'
+      ? StatusBar.currentHeight || 0
+      : 0;
+  const menuHeaderHeight = isMobile ? 56 : 64;
+
+  useRealtimeRefresh('landlord-pending-approvals-badge', [{ table: 'tenants' }], () => {
+    setRealtimeVersion((version) => version + 1);
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -44,13 +56,10 @@ export default function LandlordApp({ user, onLogout }) {
     };
 
     refreshSignupCount();
-    const refreshTimer = setInterval(refreshSignupCount, 30000);
-
     return () => {
       isMounted = false;
-      clearInterval(refreshTimer);
     };
-  }, []);
+  }, [realtimeVersion]);
 
   const getScreenTitle = () => {
     switch (activeScreen) {
@@ -182,9 +191,9 @@ export default function LandlordApp({ user, onLogout }) {
             style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.35)' }}
             onPress={closeMenu}
           />
-          <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '50%', zIndex: 2, elevation: 8, backgroundColor: colors.card, paddingTop: Platform.OS === 'ios' ? safeAreaTop + 20 : 20, paddingHorizontal: 16 }}>
+          <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: isMobile ? '68%' : 320, maxWidth: 360, zIndex: 2, elevation: 8, backgroundColor: colors.card, paddingTop: menuTopInset, paddingHorizontal: 16 }}>
             <Pressable style={{ flex: 1 }} onPress={(e) => e.stopPropagation()}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 30 }}>
+              <View style={{ height: menuHeaderHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 30 }}>
                 <Text style={{ fontSize: fs(20), fontWeight: '800', color: colors.text }}>Menu</Text>
                 <TouchableOpacity onPress={closeMenu} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 4 }}>
                   <Ionicons name="close" size={24} color={colors.textSecondary} />
@@ -194,9 +203,9 @@ export default function LandlordApp({ user, onLogout }) {
                 {menuItems.map((item) => {
                   const isActive = activeScreen === item.id;
                   return (
-                    <TouchableOpacity key={item.id} activeOpacity={0.7} onPress={() => handleMenuNavigate(item.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 12, marginBottom: 6, backgroundColor: isActive ? colors.accentBg : 'transparent' }}>
+                    <TouchableOpacity key={item.id} activeOpacity={0.7} onPress={() => handleMenuNavigate(item.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 12, borderRadius: 12, marginBottom: 6, backgroundColor: isActive ? colors.accentBg : 'transparent' }}>
                       <Ionicons name={isActive ? item.icon : item.iconOutline} size={22} color={isActive ? colors.accent : colors.textSecondary} />
-                      <Text style={{ flex: 1, fontSize: fs(15), fontWeight: isActive ? '700' : '500', color: isActive ? colors.accent : colors.text }}>{item.label}</Text>
+                      <Text numberOfLines={1} style={{ flex: 1, flexShrink: 1, fontSize: fs(15), fontWeight: isActive ? '700' : '500', color: isActive ? colors.accent : colors.text }}>{item.label}</Text>
                     </TouchableOpacity>
                   );
                 })}

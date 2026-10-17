@@ -10,6 +10,7 @@ import {
   submitRoomChangeRequest,
   getCurrentTenant,
 } from '../../services/dataService';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 export default function TenantRoomChangeScreen({ user }) {
   const { colors } = useTheme();
@@ -26,7 +27,6 @@ export default function TenantRoomChangeScreen({ user }) {
 
   const loadData = async () => {
     try {
-      setLoading(true);
       setError('');
       const [rooms, reqs, tenantProfile] = await Promise.all([
         getAvailableRoomsForChange(user?.tenant_id),
@@ -46,6 +46,12 @@ export default function TenantRoomChangeScreen({ user }) {
   useEffect(() => {
     loadData();
   }, [user?.tenant_id]);
+
+  useRealtimeRefresh(`tenant-room-changes-${user?.tenant_id || 'unknown'}`, [
+    { table: 'rooms' },
+    { table: 'room_change_requests', filter: `tenant_id=eq.${user?.tenant_id || ''}` },
+    { table: 'tenants', filter: `id=eq.${user?.tenant_id || ''}` },
+  ], loadData, Boolean(user?.tenant_id));
 
   const submitRequest = async () => {
     if (!selectedRoomId) {
@@ -163,7 +169,7 @@ export default function TenantRoomChangeScreen({ user }) {
                 activeOpacity={0.8}
                 onPress={submitting ? undefined : submitRequest}
                 accessibilityState={{ disabled: submitting }}
-                style={{ pointerEvents: submitting ? 'none' : 'auto', backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 999, overflow: 'hidden', alignItems: 'center', marginTop: 18, minHeight: 48, justifyContent: 'center', opacity: submitting ? 0.6 : 1 }}
+                style={{ pointerEvents: submitting ? 'none' : 'auto', backgroundColor: colors.successText, paddingVertical: 14, borderRadius: 999, overflow: 'hidden', alignItems: 'center', marginTop: 18, minHeight: 48, justifyContent: 'center', opacity: submitting ? 0.6 : 1 }}
               >
                 {submitting ? (
                   <ActivityIndicator size="small" color={colors.onPrimary} />

@@ -6,6 +6,7 @@ import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle } fro
 import { useTheme } from '../../utils/ThemeContext';
 import { getAnnouncements } from '../../services/dataService';
 import AnnouncementDetailsModal from '../../components/AnnouncementDetailsModal';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 export default function TenantUpdatesScreen() {
   const { colors } = useTheme();
@@ -18,11 +19,14 @@ export default function TenantUpdatesScreen() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
 
+  useRealtimeRefresh('tenant-announcements', [{ table: 'announcements' }], () => {
+    setRefreshKey((key) => key + 1);
+  });
+
   useEffect(() => {
     let isMounted = true;
     const load = async () => {
       try {
-        setLoading(true);
         setError(null);
         const data = await getAnnouncements();
         if (isMounted) setAnnouncements(data);

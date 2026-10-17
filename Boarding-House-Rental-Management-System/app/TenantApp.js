@@ -4,6 +4,7 @@ import { isDesktop } from './utils/responsive';
 import { useTheme } from './utils/ThemeContext';
 import { getAnnouncements, getTenantNotifications } from './services/dataService';
 import { getLastSeen, getAnnouncementTime } from './utils/announcementSeen';
+import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 
 // Import header component
 import TenantHeader from './components/TenantHeader';
@@ -15,6 +16,7 @@ import TenantUpdatesScreen from './screens/tenant/TenantUpdatesScreen';
 import TenantFinancesScreen from './screens/tenant/TenantFinancesScreen';
 import TenantNotificationsScreen from './screens/tenant/TenantNotificationsScreen';
 import TenantSettingsScreen from './screens/tenant/TenantSettingsScreen';
+import TenantApplicationScreen from './screens/tenant/TenantApplicationScreen';
 import TenantBottomNav from './components/TenantBottomNav';
 
 export default function TenantApp({ user, onLogout }) {
@@ -23,8 +25,14 @@ export default function TenantApp({ user, onLogout }) {
   const { isDark, toggleTheme, colors } = useTheme();
 
   const [notificationBadge, setNotificationBadge] = useState(0);
+  const [realtimeVersion, setRealtimeVersion] = useState(0);
 
   useEffect(() => setTenantUser(user), [user]);
+
+  useRealtimeRefresh(`tenant-badge-${tenantUser?.tenant_id || 'unknown'}`, [
+    { table: 'tenant_notifications', filter: `tenant_id=eq.${tenantUser?.tenant_id || ''}` },
+    { table: 'announcements' },
+  ], () => setRealtimeVersion((version) => version + 1), Boolean(tenantUser?.tenant_id));
 
   useEffect(() => {
     let active = true;
@@ -52,7 +60,7 @@ export default function TenantApp({ user, onLogout }) {
     return () => {
       active = false;
     };
-  }, [activeScreen, tenantUser?.uid, tenantUser?.tenant_id]);
+  }, [activeScreen, tenantUser?.uid, tenantUser?.tenant_id, realtimeVersion]);
 
   const getScreenTitle = () => {
     switch (activeScreen) {
@@ -64,6 +72,8 @@ export default function TenantApp({ user, onLogout }) {
         return 'Updates';
       case 'finances':
         return 'My Finances';
+      case 'application':
+        return 'Application';
       case 'notifications':
         return 'Notifications';
       case 'settings':
@@ -89,13 +99,15 @@ export default function TenantApp({ user, onLogout }) {
   const renderScreen = () => {
     switch (activeScreen) {
       case 'home':
-        return <TenantHomeScreen user={tenantUser} onNavigateToNotifications={() => setActiveScreen('notifications')} />;
+        return <TenantHomeScreen user={tenantUser} onNavigateToNotifications={() => setActiveScreen('notifications')} onNavigateToApplication={() => setActiveScreen('application')} />;
       case 'complaints':
         return <TenantComplaintsScreen user={tenantUser} />;
       case 'updates':
         return <TenantUpdatesScreen />;
       case 'finances':
-        return <TenantFinancesScreen user={tenantUser} />;
+        return <TenantFinancesScreen user={tenantUser} onNavigateToApplication={() => setActiveScreen('application')} />;
+      case 'application':
+        return <TenantApplicationScreen user={tenantUser} />;
       case 'notifications':
         return <TenantNotificationsScreen user={tenantUser} />;
       case 'settings':
@@ -105,7 +117,7 @@ export default function TenantApp({ user, onLogout }) {
           onUserUpdated={(updates) => setTenantUser((current) => ({ ...current, ...updates }))}
         />;
       default:
-        return <TenantHomeScreen user={tenantUser} onNavigateToNotifications={() => setActiveScreen('notifications')} />;
+        return <TenantHomeScreen user={tenantUser} onNavigateToNotifications={() => setActiveScreen('notifications')} onNavigateToApplication={() => setActiveScreen('application')} />;
     }
   };
 

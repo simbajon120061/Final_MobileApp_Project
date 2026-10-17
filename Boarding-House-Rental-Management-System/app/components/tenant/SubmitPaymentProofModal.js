@@ -158,7 +158,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
             <Text style={{ fontSize: fs(18), fontWeight: '700', color: colors.text }}>Submit Payment Proof</Text>
             <TouchableOpacity onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="close" size={24} color={colors.textSecondary} />
+              <Ionicons name="close" size={24} color={colors.dangerText} />
             </TouchableOpacity>
           </View>
 
@@ -306,7 +306,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
               onPress={handleSubmit}
               disabled={submitting}
               style={{
-                backgroundColor: colors.primary,
+                backgroundColor: colors.successText,
                 padding: 16,
                 borderRadius: 12,
                 alignItems: 'center',

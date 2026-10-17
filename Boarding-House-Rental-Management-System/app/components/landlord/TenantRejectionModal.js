@@ -147,15 +147,15 @@ export default function TenantRejectionModal({ visible, tenant, onClose, onSucce
                   accessibilityRole="button"
                   onPress={() => setConfirmationVisible(false)}
                   disabled={submitting}
-                  style={{ flex: 1, minHeight: 48, backgroundColor: colors.bg, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+                  style={{ flex: 1, minHeight: 48, backgroundColor: colors.dangerText, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text }}>Go back</Text>
+                  <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Go back</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   accessibilityRole="button"
                   onPress={confirmRejection}
                   disabled={submitting}
-                  style={{ flex: 1, minHeight: 48, backgroundColor: colors.dangerText, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+                  style={{ flex: 1, minHeight: 48, backgroundColor: colors.successText, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
                 >
                   {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Confirm rejection</Text>}
                 </TouchableOpacity>
@@ -200,9 +200,9 @@ export default function TenantRejectionModal({ visible, tenant, onClose, onSucce
                   accessibilityRole="button"
                   onPress={onClose}
                   disabled={submitting}
-                  style={{ flex: 1, backgroundColor: colors.bg, paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}
+                  style={{ flex: 1, backgroundColor: colors.dangerText, paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}
                 >
-                  <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text }}>Cancel</Text>
+                  <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   accessibilityRole="button"

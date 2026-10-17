@@ -1,135 +1,100 @@
 /**
  * 3NF Data Service Layer
  * 
- * Reads and writes the app's Firestore collections, with the initial room and
- * payment setup request stored in Supabase.
+ * Reads and writes the app's relational tables through Supabase.
  * 
- * Uses Firebase Firestore for the existing app data when configured.
+ * Uses Supabase when configured.
  * Gracefully falls back to in-memory 3NF mock store in demo mode.
  */
 
-import { auth, db, isFirebaseConfigured } from '../utils/firebase.js';
 import { isSupabaseConfigured, supabase } from '../utils/supabase.js';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { decode } from 'base64-arraybuffer';
 import { COLLECTIONS } from './databaseSchema.js';
-import { getNormalizedMockDatabase, seedFirestoreDatabase } from './seedDatabase.js';
+import { getNormalizedMockDatabase } from './seedDatabase.js';
 
-// ─── Firestore Helpers ───────────────────────────────────────
+// ─── Supabase Helpers ─────────────────────────────────────────
 
-let firestoreImports = null;
+const TABLE_ALIASES = { [COLLECTIONS.USERS]: 'profiles' };
+const TABLE_KEYS = { [COLLECTIONS.STAFF_PROFILES]: 'user_id' };
 
-async function getFirestoreFns() {
-  if (!firestoreImports) {
-    firestoreImports = await import('firebase/firestore');
-  }
-  return firestoreImports;
+function getTableName(collectionName) {
+  return TABLE_ALIASES[collectionName] || collectionName;
+}
+
+function getKeyColumn(collectionName) {
+  return TABLE_KEYS[collectionName] || 'id';
+}
+
+function normalizeRow(collectionName, row) {
+  if (!row) return row;
+  if (collectionName === COLLECTIONS.STAFF_PROFILES) return { ...row, id: row.user_id };
+  return row;
+}
+
+async function getCurrentUserId() {
+  if (!supabase) return null;
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id || null;
 }
 
 async function readCollection(collectionName) {
   try {
-    const { collection, getDocs } = await getFirestoreFns();
-    const snapshot = await getDocs(collection(db, collectionName));
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    if (!supabase) return getNormalizedMockDatabase()[collectionName] || [];
+    const { data, error } = await supabase.from(getTableName(collectionName)).select('*');
+    if (error) throw error;
+    return (data || []).map((row) => normalizeRow(collectionName, row));
   } catch (error) {
-    console.warn(`Firestore read denied or failed for "${collectionName}":`, error.message || error);
+    console.warn(`Supabase read denied or failed for "${collectionName}":`, error.message || error);
     throw error;
   }
 }
 
 async function readWhere(collectionName, field, value) {
-  const { collection, getDocs, query, where } = await getFirestoreFns();
-  const snapshot = await getDocs(query(collection(db, collectionName), where(field, '==', value)));
-  return snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
+  if (!supabase) return (getNormalizedMockDatabase()[collectionName] || []).filter((row) => row[field] === value);
+  const { data, error } = await supabase.from(getTableName(collectionName)).select('*').eq(field, value);
+  if (error) throw error;
+  return (data || []).map((row) => normalizeRow(collectionName, row));
 }
 
 async function writeDocument(collectionName, docId, data) {
   try {
-    const { doc, setDoc } = await getFirestoreFns();
-    const docRef = doc(db, collectionName, docId);
-    await setDoc(docRef, { id: docId, ...data });
+    if (!supabase) return { id: docId, ...data };
+    const keyColumn = getKeyColumn(collectionName);
+    const row = { ...data, [keyColumn]: docId };
+    delete row.id;
+    if (keyColumn === 'id') row.id = docId;
+    const { error } = await supabase.from(getTableName(collectionName)).upsert(row, { onConflict: keyColumn });
+    if (error) throw error;
     return { id: docId, ...data };
   } catch (error) {
-    console.error(`Error writing to "${collectionName}/${docId}":`, error);
+    console.error(`Error writing to Supabase table "${collectionName}" (${docId}):`, error);
     throw error;
   }
 }
 
 async function updateDocument(collectionName, docId, updates) {
   try {
-    const { doc, updateDoc } = await getFirestoreFns();
-    const docRef = doc(db, collectionName, docId);
-    await updateDoc(docRef, updates);
+    if (!supabase) return;
+    const { error } = await supabase.from(getTableName(collectionName))
+      .update(updates).eq(getKeyColumn(collectionName), docId);
+    if (error) throw error;
   } catch (error) {
-    console.error(`Error updating "${collectionName}/${docId}":`, error);
+    console.error(`Error updating Supabase table "${collectionName}" (${docId}):`, error);
     throw error;
   }
 }
 
-// ─── Store Access (Firestore or In-Memory) ───────────────────
+// ─── Store Access (Supabase or In-Memory) ─────────────────────
 
 async function getStore() {
-  if (!isFirebaseConfigured || !db) {
+  if (!isSupabaseConfigured || !supabase) {
     return getNormalizedMockDatabase();
   }
 
   const collectionNames = Object.values(COLLECTIONS);
-  const uid = auth?.currentUser?.uid;
-  if (!uid) return Object.fromEntries(collectionNames.map((name) => [name, []]));
-
-  const { doc, getDoc } = await getFirestoreFns();
-  const userSnapshot = await getDoc(doc(db, COLLECTIONS.USERS, uid));
-  const role = userSnapshot.exists() ? userSnapshot.data().role : null;
-
-  if (role === 'owner' || role === 'caretaker' || role === 'landlord') {
-    const staffResults = await Promise.all(collectionNames.map(async (name) => {
-      // Initial room setup requests are stored in Supabase, never Firestore.
-      if (name === COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS) return [name, []];
-      try {
-        return [name, await readCollection(name)];
-      } catch {
-        return [name, []];
-      }
-    }));
-    return Object.fromEntries(staffResults);
-  }
-
-  if (role !== 'tenant') return Object.fromEntries(collectionNames.map((name) => [name, []]));
-
-  // Read only this tenant's documents and their related billing records.
-  const tenantProfiles = await readWhere(COLLECTIONS.TENANTS, 'user_id', uid);
-  const tenant = tenantProfiles[0];
-  if (!tenant) return Object.fromEntries(collectionNames.map((name) => [name, []]));
-
-  const tenantStore = Object.fromEntries(collectionNames.map((name) => [name, []]));
-  const [boardingHouses, roomTypes, rooms, leases, complaints, announcements, roomChangeRequests, paymentProofs, tenantNotifications] = await Promise.all([
-    readCollection(COLLECTIONS.BOARDING_HOUSES),
-    readCollection(COLLECTIONS.ROOM_TYPES),
-    readCollection(COLLECTIONS.ROOMS),
-    readWhere(COLLECTIONS.LEASES, 'tenant_id', tenant.id),
-    readWhere(COLLECTIONS.COMPLAINTS, 'tenant_id', tenant.id),
-    readCollection(COLLECTIONS.ANNOUNCEMENTS),
-    readWhere(COLLECTIONS.ROOM_CHANGE_REQUESTS, 'tenant_id', tenant.id).catch(() => []),
-    readWhere(COLLECTIONS.PAYMENT_PROOFS, 'tenant_id', tenant.id).catch(() => []),
-    readWhere(COLLECTIONS.TENANT_NOTIFICATIONS, 'tenant_id', tenant.id).catch(() => []),
-  ]);
-  const invoices = (await Promise.all(leases.map((lease) => readWhere(COLLECTIONS.INVOICES, 'lease_id', lease.id)))).flat();
-  const payments = (await Promise.all(invoices.map((invoice) => readWhere(COLLECTIONS.PAYMENTS, 'invoice_id', invoice.id)))).flat();
-
-  tenantStore[COLLECTIONS.USERS] = [{ id: uid, ...userSnapshot.data() }];
-  tenantStore[COLLECTIONS.TENANTS] = tenantProfiles;
-  tenantStore[COLLECTIONS.BOARDING_HOUSES] = boardingHouses;
-  tenantStore[COLLECTIONS.ROOM_TYPES] = roomTypes;
-  tenantStore[COLLECTIONS.ROOMS] = rooms;
-  tenantStore[COLLECTIONS.LEASES] = leases;
-  tenantStore[COLLECTIONS.INVOICES] = invoices;
-  tenantStore[COLLECTIONS.PAYMENTS] = payments;
-  tenantStore[COLLECTIONS.COMPLAINTS] = complaints;
-  tenantStore[COLLECTIONS.ANNOUNCEMENTS] = announcements;
-  tenantStore[COLLECTIONS.ROOM_CHANGE_REQUESTS] = roomChangeRequests;
-  tenantStore[COLLECTIONS.PAYMENT_PROOFS] = paymentProofs;
-  tenantStore[COLLECTIONS.TENANT_NOTIFICATIONS] = tenantNotifications;
-  return tenantStore;
+  const results = await Promise.all(collectionNames.map(async (name) => [name, await readCollection(name)]));
+  return Object.fromEntries(results);
 
 }
 
@@ -237,7 +202,7 @@ function getCurrentBillingPeriod() {
 }
 
 async function getFinancialCollections() {
-  if (isFirebaseConfigured && db) {
+  if (isSupabaseConfigured && supabase) {
     const [invoices, payments] = await Promise.all([
       readCollection(COLLECTIONS.INVOICES),
       readCollection(COLLECTIONS.PAYMENTS),
@@ -295,7 +260,7 @@ function toRoomListItem(room, roomTypes, leases = [], tenants = [], invoices = [
 }
 
 async function getRoomsStore() {
-  if (!isFirebaseConfigured || !db) return getStore();
+  if (!isSupabaseConfigured || !supabase) return getStore();
 
   const [rooms, roomTypes, leases, tenants, invoices, payments] = await Promise.all([
     readCollection(COLLECTIONS.ROOMS),
@@ -336,7 +301,7 @@ export async function getBoardingHouseConfig() {
  */
 export async function getRooms() {
   const data = await getRoomsStore();
-  const isLiveStore = isFirebaseConfigured && db;
+  const isLiveStore = isSupabaseConfigured && supabase;
   const rooms = isLiveStore ? data.rooms : (data[COLLECTIONS.ROOMS] || []);
   const roomTypes = isLiveStore ? data.roomTypes : (data[COLLECTIONS.ROOM_TYPES] || []);
   const leases = isLiveStore ? data.leases : (data[COLLECTIONS.LEASES] || []);
@@ -349,8 +314,8 @@ export async function getRooms() {
 
 /** Room types available to the owner when adding a room. */
 export async function getRoomTypes() {
-  const store = isFirebaseConfigured && db ? null : await getStore();
-  const roomTypes = isFirebaseConfigured && db
+  const store = isSupabaseConfigured && supabase ? null : await getStore();
+  const roomTypes = isSupabaseConfigured && supabase
     ? await readCollection(COLLECTIONS.ROOM_TYPES)
     : (store[COLLECTIONS.ROOM_TYPES] || []);
   return roomTypes.map((type) => ({
@@ -363,7 +328,7 @@ export async function getRoomTypes() {
   ));
 }
 
-/** Add a vacant room. Room creation is restricted to owner accounts in Firestore rules. */
+/** Add a vacant room. Room creation is restricted to owner accounts by RLS. */
 export async function addRoom({ roomNumber, typeId, reservedForName = '' }) {
   const normalizedNumber = String(roomNumber || '').trim().replace(/^0+/, '');
   if (!/^\d{1,4}$/.test(normalizedNumber)) {
@@ -378,7 +343,7 @@ export async function addRoom({ roomNumber, typeId, reservedForName = '' }) {
     throw new Error('Occupant name must include at least one letter.');
   }
 
-  const liveStore = isFirebaseConfigured && db;
+  const liveStore = isSupabaseConfigured && supabase;
   const store = liveStore ? null : await getStore();
   const [rooms, roomTypes, boardingHouses] = liveStore
     ? await Promise.all([
@@ -393,6 +358,10 @@ export async function addRoom({ roomNumber, typeId, reservedForName = '' }) {
     ];
   const roomType = roomTypes.find((type) => type.id === typeId);
   if (!roomType) throw new Error('Choose a valid room type.');
+  const boardingHouse = boardingHouses[0];
+  if (!boardingHouse?.id) {
+    throw new Error('No boarding house is configured. Apply the boarding house setup migration before adding rooms.');
+  }
 
   const formattedNumber = normalizedNumber.padStart(2, '0');
   if (rooms.some((room) => String(parseInt(room.room_number, 10)) === normalizedNumber)) {
@@ -402,7 +371,7 @@ export async function addRoom({ roomNumber, typeId, reservedForName = '' }) {
   const roomId = `room-${Date.now()}`;
   const newRoom = {
     id: roomId,
-    house_id: boardingHouses[0]?.id || 'bh-1',
+    house_id: boardingHouse.id,
     room_number: formattedNumber,
     type_id: roomType.id,
     status: cleanReservedName ? 'occupied' : 'vacant',
@@ -751,12 +720,12 @@ export async function getCurrentTenant(id = '2') {
 
 /** Load the editable personal fields for the signed-in tenant. */
 export async function getTenantSettingsProfile(tenantId) {
-  const uid = auth?.currentUser?.uid;
-  const tenants = isFirebaseConfigured && uid
+  const uid = await getCurrentUserId();
+  const tenants = isSupabaseConfigured && uid
     ? await readWhere(COLLECTIONS.TENANTS, 'user_id', uid)
     : (await getStore())[COLLECTIONS.TENANTS] || [];
   const tenant = tenants.find((item) => item.id === tenantId)
-    || tenants.find((item) => item.user_id === auth?.currentUser?.uid);
+    || tenants.find((item) => item.user_id === uid);
   if (!tenant) throw new Error('Your tenant profile is not available. Please contact the property administrator.');
 
   return {
@@ -797,7 +766,7 @@ export async function getAvailableRoomsForInitialAssignment(tenantId) {
 /** Return the tenant's initial room preference and its current review state. */
 export async function getTenantRoomAssignmentRequest(tenantId) {
   const tenantKey = String(tenantId || '');
-  if (isFirebaseConfigured && !supabase) {
+  if (isSupabaseConfigured && !supabase) {
     throw new Error('Supabase is required for room and payment setup. Check the Supabase project URL and publishable key.');
   }
   if (supabase) {
@@ -937,7 +906,7 @@ export async function uploadPaymentProof({ tenantId, asset }) {
 /** Submit or change a tenant's preferred initial room; staff still assign the room. */
 export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, paymentAmount, paymentDate, paymentReference, paymentProofPath }) {
   const tenantKey = String(tenantId || '');
-  if (isFirebaseConfigured && !supabase) {
+  if (isSupabaseConfigured && !supabase) {
     throw new Error('Supabase is required for room and payment setup. Check the Supabase project URL and publishable key.');
   }
   const store = await getStore();
@@ -1181,7 +1150,7 @@ export async function submitRoomChangeRequest({ requestedRoomId, reason, tenantI
     requested_at: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
   };
 
-  if (isFirebaseConfigured && db) {
+  if (isSupabaseConfigured && supabase) {
     await writeDocument(COLLECTIONS.ROOM_CHANGE_REQUESTS, requestId, request);
   } else {
     const mockStore = getNormalizedMockDatabase();
@@ -1233,7 +1202,7 @@ export async function getTenantComplaints(tenantId) {
 }
 
 /**
- * 16. Submit Complaint (Direct to Firebase Firestore)
+ * 16. Submit Complaint (Direct to Supabase)
  */
 export async function submitComplaint({ title, description = '', tenantId }) {
   try {
@@ -1260,7 +1229,7 @@ export async function submitComplaint({ title, description = '', tenantId }) {
       filed_at: dateStr,
     };
 
-    if (isFirebaseConfigured && db) {
+    if (isSupabaseConfigured && supabase) {
       await writeDocument(COLLECTIONS.COMPLAINTS, newId, newComplaint);
     } else {
       const mockStore = getNormalizedMockDatabase();
@@ -1313,9 +1282,11 @@ export async function getRentBilling(billingPeriod = getCurrentBillingPeriod()) 
 
         return {
           id: String(tenant.id).replace('tenant-', ''),
+          tenantId: tenant.id,
           name: `${tenant.first_name} ${tenant.last_name}`,
           initials: tenant.initials,
           room: room ? `R${parseInt(room.room_number, 10)}` : 'R?',
+          roomNumber: room?.room_number || '?',
           dueDate: invoice ? String(invoice.due_date || '') : 'Not billed',
           amount: invoice?.rent_charge ?? lease.agreed_monthly_rent ?? roomType?.base_rent ?? 0,
           totalAmount: invoice ? getInvoiceTotalAmount(invoice) : lease.agreed_monthly_rent ?? roomType?.base_rent ?? 0,
@@ -1464,7 +1435,7 @@ export async function updateUtilityBill({ invoiceId, leaseId, billingPeriod, mon
     rate_per_kwh: rate,
     reading_date: new Date().toISOString().slice(0, 10),
   };
-  if (isFirebaseConfigured && db) {
+  if (isSupabaseConfigured && supabase) {
     if (reading) await updateDocument(COLLECTIONS.UTILITY_READINGS, readingId, readingUpdates);
     else await writeDocument(COLLECTIONS.UTILITY_READINGS, readingId, { ...readingUpdates, id: readingId });
   } else if (reading) {
@@ -1496,7 +1467,7 @@ export async function updateUtilityBill({ invoiceId, leaseId, billingPeriod, mon
       created_at: new Date().toISOString(),
       notes: `${period} billing: Rent and electricity`,
     };
-    if (isFirebaseConfigured && db) {
+    if (isSupabaseConfigured && supabase) {
       await writeDocument(COLLECTIONS.INVOICES, newId, invoice);
     } else {
       store[COLLECTIONS.INVOICES].push(invoice);
@@ -1519,7 +1490,7 @@ export async function updateUtilityBill({ invoiceId, leaseId, billingPeriod, mon
     status: totalAmount > 0 && totalPaid >= totalAmount ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid',
   };
 
-  if (isFirebaseConfigured && db) {
+  if (isSupabaseConfigured && supabase) {
     await updateDocument(COLLECTIONS.INVOICES, invoiceId, updates);
   } else {
     Object.assign(invoice, updates);
@@ -1597,23 +1568,28 @@ export async function getCaretakerDashboardData() {
 }
 
 /**
- * 25. Add a new announcement (Direct to Firebase Firestore)
+ * 25. Add a new announcement (Direct to Supabase)
  */
 export async function addAnnouncement({ category, title, description }) {
   try {
     const newId = `ann-${Date.now()}`;
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const boardingHouses = isSupabaseConfigured && supabase
+      ? await readCollection(COLLECTIONS.BOARDING_HOUSES)
+      : (getNormalizedMockDatabase()[COLLECTIONS.BOARDING_HOUSES] || []);
     const newAnnouncement = {
       id: newId,
-      house_id: 'bh-1',
-      author_user_id: auth?.currentUser?.uid || 'user-caretaker-1',
+      // Associate announcements with an actual configured property when one exists.
+      // Null keeps global announcements valid before property setup is complete.
+      house_id: boardingHouses[0]?.id || null,
+      author_user_id: await getCurrentUserId(),
       category,
       title,
       description,
       created_at: dateStr,
     };
 
-    if (isFirebaseConfigured && db) {
+    if (isSupabaseConfigured && supabase) {
       await writeDocument(COLLECTIONS.ANNOUNCEMENTS, newId, newAnnouncement);
     } else {
       const mockStore = getNormalizedMockDatabase();
@@ -1637,14 +1613,14 @@ export async function addAnnouncement({ category, title, description }) {
 }
 
 /**
- * 26. Update complaint status (Direct to Firebase Firestore)
+ * 26. Update complaint status (Direct to Supabase)
  */
 export async function updateComplaintStatus(complaintId, newStatus) {
   try {
     const formattedId = complaintId.startsWith('comp-') ? complaintId : `comp-${complaintId}`;
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-    if (isFirebaseConfigured && db) {
+    if (isSupabaseConfigured && supabase) {
       const updates = { status: newStatus };
       if (newStatus === 'resolved') {
         updates.resolved_at = dateStr;
@@ -1667,8 +1643,6 @@ export async function updateComplaintStatus(complaintId, newStatus) {
     throw new Error('Failed to update complaint. Please try again.');
   }
 }
-
-export { seedFirestoreDatabase };
 
 // ═══════════════════════════════════════════════════════════════
 // TENANT ONBOARDING & FINANCIAL MANAGEMENT
@@ -1708,12 +1682,12 @@ export async function getVacantRoomsForAssignment() {
  */
 export async function getPendingTenantRegistrations() {
   try {
-    if (isFirebaseConfigured && !supabase) {
+    if (isSupabaseConfigured && !supabase) {
       throw new Error('Supabase is required to review initial room and payment submissions.');
     }
     const store = await getStore();
     const tenants = store[COLLECTIONS.TENANTS] || [];
-    let roomRequests = !isFirebaseConfigured ? (store[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] || []) : [];
+    let roomRequests = !isSupabaseConfigured ? (store[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] || []) : [];
     if (supabase) {
       const { data, error } = await supabase.from(COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS)
         .select('*').eq('status', 'pending');
@@ -1772,7 +1746,7 @@ export async function getPendingTenantRegistrations() {
 
 /** Return the live count of tenant accounts awaiting approval without loading payment proofs. */
 export async function getPendingTenantRegistrationCount() {
-  const tenants = isFirebaseConfigured && db
+  const tenants = isSupabaseConfigured && supabase
     ? await readCollection(COLLECTIONS.TENANTS)
     : (await getStore())[COLLECTIONS.TENANTS] || [];
   return tenants.filter((tenant) => tenant.account_status === 'pending').length;
@@ -1780,7 +1754,7 @@ export async function getPendingTenantRegistrationCount() {
 
 /** Return the live count of tenant payment receipts waiting for staff review. */
 export async function getPendingPaymentProofCount() {
-  if (!isFirebaseConfigured || !db) {
+  if (!isSupabaseConfigured || !supabase) {
     return getPendingPaymentProofs().then((proofs) => proofs.length);
   }
 
@@ -1893,7 +1867,7 @@ export async function approveTenant({
       ...tenant,
       account_status: 'approved',
       approved_at: approvedAtStr,
-      approved_by: approvedBy || auth?.currentUser?.uid || 'landlord-uid-1',
+      approved_by: approvedBy || await getCurrentUserId(),
     };
     
     const newLease = {
@@ -1916,6 +1890,7 @@ export async function approveTenant({
       invoice_type: 'initial',
       rent_charge: rent,
       utility_charge: 0,
+      water_charge: 0,
       security_deposit: 0,
       other_charges: WIFI_CHARGE.amount,
       additional_charges: [WIFI_CHARGE],
@@ -1933,7 +1908,7 @@ export async function approveTenant({
       payment_date: initialPaymentDateStr,
       payment_method: 'cash',
       reference_no: String(initialPaymentReference || '').trim() || `INITIAL-${tenantId}`,
-      received_by_user_id: approvedBy || auth?.currentUser?.uid || 'landlord-uid-1',
+      received_by_user_id: approvedBy || await getCurrentUserId(),
       notes: 'Initial advance payment verified with tenant application proof.',
     } : null;
     
@@ -1946,29 +1921,24 @@ export async function approveTenant({
         ? `Your account has been approved and you've been assigned to Room ${room.room_number}. Your 1 month advance has been received. Your next billing is due on ${dueDateStr}.`
         : `Your account has been approved. You've been assigned to Room ${room.room_number}. Your initial payment of ₱${rent.toLocaleString()} (1 month advance) is due on ${dueDateStr}.`,
       read: false,
+      dismissed: false,
       created_at: approvedAtStr,
       related_invoice_id: invoiceId,
     };
     
     // Persist to database
-    if (isFirebaseConfigured && db) {
-      // Use Firestore batch for atomicity
-      const { writeBatch, doc } = await getFirestoreFns();
-      const batch = writeBatch(db);
-      
-      batch.update(doc(db, COLLECTIONS.TENANTS, tenantId), {
-        account_status: 'approved',
-        approved_at: approvedAtStr,
-        approved_by: updatedTenant.approved_by,
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.rpc('approve_tenant_application', {
+        p_tenant_id: tenantId,
+        p_room_id: roomId,
+        p_lease: newLease,
+        p_invoice: newInvoice,
+        p_payment: initialPayment,
+        p_notification: notification,
+        p_approved_at: approvedAtStr,
+        p_approved_by: updatedTenant.approved_by,
       });
-      
-      batch.set(doc(db, COLLECTIONS.LEASES, leaseId), newLease);
-      batch.set(doc(db, COLLECTIONS.INVOICES, invoiceId), newInvoice);
-      if (initialPayment) batch.set(doc(db, COLLECTIONS.PAYMENTS, initialPaymentId), initialPayment);
-      batch.update(doc(db, COLLECTIONS.ROOMS, roomId), { status: 'occupied' });
-      batch.set(doc(db, COLLECTIONS.TENANT_NOTIFICATIONS, notificationId), notification);
-
-      await batch.commit();
+      if (error) throw error;
     } else {
       // Mock database
       const mockStore = getNormalizedMockDatabase();
@@ -2036,23 +2006,19 @@ export async function rejectTenant({ tenantId, rejectionReason, rejectedBy }) {
       title: 'Application Update',
       message: `Your application could not be approved at this time. Reason: ${reason}. Please contact the property manager for more information.`,
       read: false,
+      dismissed: false,
       created_at: rejectedAtStr,
       related_invoice_id: null,
     };
     
-    if (isFirebaseConfigured && db) {
-      const { writeBatch, doc } = await getFirestoreFns();
-      const batch = writeBatch(db);
-      
-      batch.update(doc(db, COLLECTIONS.TENANTS, tenantId), {
-        account_status: 'rejected',
-        rejected_at: rejectedAtStr,
-        rejection_reason: reason,
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.rpc('reject_tenant_application', {
+        p_tenant_id: tenantId,
+        p_rejected_at: rejectedAtStr,
+        p_rejection_reason: reason,
+        p_notification: notification,
       });
-      
-      batch.set(doc(db, COLLECTIONS.TENANT_NOTIFICATIONS, notificationId), notification);
-
-      await batch.commit();
+      if (error) throw error;
     } else {
       const mockStore = getNormalizedMockDatabase();
       const mockTenant = (mockStore[COLLECTIONS.TENANTS] || []).find((t) => t.id === tenantId);
@@ -2422,7 +2388,7 @@ export async function recordPayment({ invoiceId, amountPaid, paymentDate, paymen
       payment_date: paymentDate,
       payment_method: paymentMethod,
       reference_no: stableReference || `${paymentMethod.toUpperCase()}-${paymentId.slice(-6).toUpperCase()}`,
-      received_by_user_id: receivedBy || auth?.currentUser?.uid || 'landlord-uid-1',
+      received_by_user_id: receivedBy || await getCurrentUserId(),
       notes: String(notes || '').trim(),
     };
 
@@ -2434,6 +2400,7 @@ export async function recordPayment({ invoiceId, amountPaid, paymentDate, paymen
       title: 'Payment Received',
       message: `Your payment of PHP ${amount.toLocaleString()} has been recorded. Receipt: ${newPayment.reference_no}. Remaining balance: PHP ${newBalance.toLocaleString()}.`,
       read: false,
+      dismissed: false,
       created_at: new Date().toISOString(),
       related_invoice_id: invoiceId,
     } : null;
@@ -2444,19 +2411,22 @@ export async function recordPayment({ invoiceId, amountPaid, paymentDate, paymen
     const nextBillingDueDay = nextBillingDate?.getDate();
     const nextBillingDueDateStr = nextBillingDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-    if (isFirebaseConfigured && db) {
-      const { writeBatch, doc } = await getFirestoreFns();
-      const batch = writeBatch(db);
-      batch.set(doc(db, COLLECTIONS.PAYMENTS, paymentId), newPayment);
-      batch.update(doc(db, COLLECTIONS.INVOICES, invoiceId), {
+    if (isSupabaseConfigured && supabase) {
+      const nextInvoice = {
+        ...invoice,
         status: newStatus,
         total_amount: invoiceTotal,
         security_deposit: 0,
         ...(nextBillingDueDateStr ? { due_date: nextBillingDueDateStr } : {}),
+      };
+      const { error } = await supabase.rpc('record_tenant_payment', {
+        p_payment: newPayment,
+        p_invoice: nextInvoice,
+        p_lease_id: lease?.id || null,
+        p_due_day: nextBillingDueDay || null,
+        p_notification: notification,
       });
-      if (nextBillingDueDay) batch.update(doc(db, COLLECTIONS.LEASES, lease.id), { due_day_of_month: nextBillingDueDay });
-      if (notification) batch.set(doc(db, COLLECTIONS.TENANT_NOTIFICATIONS, notification.id), notification);
-      await batch.commit();
+      if (error) throw error;
     } else {
       const mockStore = getNormalizedMockDatabase();
       mockStore[COLLECTIONS.PAYMENTS].push(newPayment);
@@ -2508,7 +2478,7 @@ export async function getTenantNotifications(tenantId) {
 /** Dismiss a tenant's notification without deleting its record. */
 export async function dismissTenantNotification(notificationId) {
   try {
-    if (isFirebaseConfigured && db) {
+    if (isSupabaseConfigured && supabase) {
       await updateDocument(COLLECTIONS.TENANT_NOTIFICATIONS, notificationId, { dismissed: true });
     } else {
       const mockStore = getNormalizedMockDatabase();
@@ -2527,7 +2497,7 @@ export async function dismissTenantNotification(notificationId) {
  */
 export async function markNotificationAsRead(notificationId) {
   try {
-    if (isFirebaseConfigured && db) {
+    if (isSupabaseConfigured && supabase) {
       await updateDocument(COLLECTIONS.TENANT_NOTIFICATIONS, notificationId, { read: true });
     } else {
       const mockStore = getNormalizedMockDatabase();
@@ -2559,7 +2529,7 @@ export async function createNotification({ tenantId, type, title, message, relat
       related_invoice_id: relatedInvoiceId,
     };
     
-    if (isFirebaseConfigured && db) {
+    if (isSupabaseConfigured && supabase) {
       await writeDocument(COLLECTIONS.TENANT_NOTIFICATIONS, notificationId, notification);
     } else {
       const mockStore = getNormalizedMockDatabase();
@@ -2628,7 +2598,7 @@ export async function submitPaymentProof({ tenantId, invoiceId, amount, paymentD
       rejection_reason: null,
     };
     
-    if (isFirebaseConfigured && db) {
+    if (isSupabaseConfigured && supabase) {
       await writeDocument(COLLECTIONS.PAYMENT_PROOFS, proofId, paymentProof);
     } else {
       const mockStore = getNormalizedMockDatabase();
@@ -2767,7 +2737,7 @@ export async function approvePaymentProof(proofId, reviewerUserId) {
       });
     }
 
-    if (isFirebaseConfigured && db) {
+    if (isSupabaseConfigured && supabase) {
       await updateDocument(COLLECTIONS.PAYMENT_PROOFS, proofId, {
         status: 'approved',
         reviewed_at: now,
@@ -2809,7 +2779,7 @@ export async function rejectPaymentProof(proofId, reviewerUserId, reason) {
     
     const now = new Date().toISOString();
     
-    if (isFirebaseConfigured && db) {
+    if (isSupabaseConfigured && supabase) {
       await updateDocument(COLLECTIONS.PAYMENT_PROOFS, proofId, {
         status: 'rejected',
         reviewed_at: now,

@@ -17,6 +17,7 @@ import {
 } from '../../utils/responsive';
 import { getAnnouncements, addAnnouncement } from '../../services/dataService';
 import AnnouncementDetailsModal from '../../components/AnnouncementDetailsModal';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 export default function AnnouncementsScreen() {
   const { colors } = useTheme();
@@ -38,7 +39,6 @@ export default function AnnouncementsScreen() {
 
   const fetchAnnouncements = async () => {
     try {
-      setLoading(true);
       setError(null);
       const data = await getAnnouncements();
       setAnnouncements(data);
@@ -52,6 +52,8 @@ export default function AnnouncementsScreen() {
   useEffect(() => {
     fetchAnnouncements();
   }, []);
+
+  useRealtimeRefresh('landlord-announcements', [{ table: 'announcements' }], fetchAnnouncements);
 
   const handleCreateAnnouncement = async () => {
     if (!newTitle.trim()) {
@@ -447,24 +449,22 @@ export default function AnnouncementsScreen() {
                 onPress={() => setModalVisible(false)}
                 style={{
                   flex: 1,
-                  backgroundColor: colors.bg,
+                  backgroundColor: colors.dangerText,
                   paddingVertical: 14,
                   borderRadius: 12,
                   alignItems: 'center',
-                  borderWidth: 1,
-                  borderColor: colors.cardBorder,
                   minHeight: 48,
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.textMuted }}>Cancel</Text>
+                <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleCreateAnnouncement}
                 disabled={submitting}
                 style={{
                   flex: 1,
-                  backgroundColor: colors.primary,
+                  backgroundColor: colors.successText,
                   paddingVertical: 14,
                   borderRadius: 12,
                   alignItems: 'center',
