@@ -14,6 +14,13 @@ const getAnnouncementTime = (announcement) => {
   return Number.isNaN(dateTime) ? 0 : dateTime;
 };
 
+const formatApprovalDate = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-PH', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
 export default function TenantHomeScreen({ user, onNavigateToNotifications, onNavigateToApplication }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
@@ -161,6 +168,11 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                 <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 3, fontWeight: '500' }}>
                   {tenant.roomNumber ? `Room ${tenant.roomNumber} · ${tenant.roomType}` : 'Room assignment pending'}
                 </Text>
+                {tenant.accountStatus === 'approved' && formatApprovalDate(tenant.approvedAt) && (
+                  <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 3 }}>
+                    Approved on {formatApprovalDate(tenant.approvedAt)}
+                  </Text>
+                )}
               </View>
               {!!tenant.roomNumber && (
                 <View style={{ backgroundColor: colors.successBg, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -172,6 +184,19 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
             <Text style={{ fontSize: fs(14), color: colors.textMuted, lineHeight: 21, marginTop: 14 }}>
               Your home, billing, and property updates in one place.
             </Text>
+            {tenant.accountStatus === 'approved' && (
+              <TouchableOpacity
+                onPress={onNavigateToApplication}
+                accessibilityRole="button"
+                accessibilityLabel="View room and application details"
+                activeOpacity={0.75}
+                style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, paddingVertical: 7 }}
+              >
+                <Ionicons name="document-text-outline" size={15} color={colors.accent} />
+                <Text style={{ fontSize: fs(12), color: colors.accent, fontWeight: '700' }}>Room & application details</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+              </TouchableOpacity>
+            )}
           </View>
             {tenant.accountStatus === 'approved' ? (
             <View style={{ paddingHorizontal: padding, gap: spacing.xl, paddingBottom: 0 }}>
@@ -313,6 +338,21 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                   </Text>
                 </View>
 
+                <View style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  paddingVertical: 14,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.divider,
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name="water-outline" size={17} color={colors.textMuted} />
+                    <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '600' }}>Water</Text>
+                  </View>
+                  <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '700' }}>₱0</Text>
+                </View>
+
                 {(billing.additionalCharges || []).map((charge, index) => (
                   <View key={charge.id || `${charge.label}-${index}`} style={{
                     flexDirection: 'row',
@@ -390,22 +430,24 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                     padding: isMobile ? 18 : 22,
                   }}
                 >
-                  <View style={{
-                    backgroundColor: colors.warningBg,
-                    alignSelf: 'flex-start',
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 8,
-                    marginBottom: 10,
-                  }}>
-                    <Text style={{
-                      fontSize: fs(12),
-                      fontWeight: '800',
-                      color: colors.warningText,
+                  {String(latestNotice.category || latestNotice.type || '').toLowerCase() !== 'payment_verified' && (
+                    <View style={{
+                      backgroundColor: colors.warningBg,
+                      alignSelf: 'flex-start',
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                      borderRadius: 8,
+                      marginBottom: 10,
                     }}>
-                      {latestNotice.category || latestNotice.type}
-                    </Text>
-                  </View>
+                      <Text style={{
+                        fontSize: fs(12),
+                        fontWeight: '800',
+                        color: colors.warningText,
+                      }}>
+                        {latestNotice.category || latestNotice.type}
+                      </Text>
+                    </View>
+                  )}
 
                   <Text style={{
                     fontSize: fs(16),
@@ -446,10 +488,10 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                   </View>
                   <Text style={{ fontSize: fs(18), color: colors.text, fontWeight: '800', textAlign: 'center' }}>Welcome to your tenant dashboard</Text>
                   <Text style={{ fontSize: fs(13), color: colors.textSecondary, lineHeight: 20, textAlign: 'center', marginTop: 7 }}>
-                    Your room and move-in details are available on the Application page.
+                    Set up your application by choosing a room and adding your move-in payment details.
                   </Text>
                   <TouchableOpacity onPress={onNavigateToApplication} accessibilityRole="button" style={{ marginTop: 16, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 11, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text style={{ color: '#fff', fontSize: fs(13), fontWeight: '800' }}>View application</Text>
+                    <Text style={{ color: '#fff', fontSize: fs(13), fontWeight: '800' }}>Set up application</Text>
                     <Ionicons name="arrow-forward" size={16} color="#fff" />
                   </TouchableOpacity>
                 </View>

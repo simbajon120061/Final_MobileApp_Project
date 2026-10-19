@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StatusBar, TouchableOpacity, Platform, Modal, Pressable, Text, ScrollView } from 'react-native';
+import { BackHandler, View, StatusBar, TouchableOpacity, Platform, Modal, Pressable, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isDesktop, isMobile, safeAreaTop, fs, spacing } from './utils/responsive';
 import { useTheme } from './utils/ThemeContext';
@@ -17,6 +17,7 @@ import LandlordReports from './screens/landlord/LandlordReports';
 import PendingApprovalsScreen from './screens/landlord/PendingApprovalsScreen';
 import TenantFinancialManagement from './screens/landlord/TenantFinancialManagement';
 import TenantDetailFinancial from './screens/landlord/TenantDetailFinancial';
+import PaymentReviewScreen from './screens/landlord/PaymentReviewScreen';
 
 // Import navigation
 import LandlordBottomNav from './components/LandlordBottomNav';
@@ -81,6 +82,8 @@ export default function LandlordApp({ user, onLogout }) {
         return 'Tenant Finances';
       case 'tenant-detail':
         return 'Tenant Financial Details';
+      case 'payment-review':
+        return 'Payment Review';
       default:
         return 'Dashboard';
     }
@@ -103,11 +106,31 @@ export default function LandlordApp({ user, onLogout }) {
     setNavigationParams(params);
   };
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (menuVisible) {
+        setMenuVisible(false);
+        return true;
+      }
+      if (activeScreen === 'tenant-detail' || activeScreen === 'payment-review') {
+        handleNavigate('finances', { filter: navigationParams?.returnFilter || 'all' });
+        return true;
+      }
+      if (activeScreen !== 'dashboard') {
+        handleNavigate('dashboard');
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [activeScreen, menuVisible, navigationParams]);
+
   const renderScreen = () => {
     // Create navigation object for screens that need it
     const navigation = {
       navigate: (screen, params) => handleNavigate(screen, params),
-      goBack: () => handleNavigate('finances'),
+      goBack: () => handleNavigate('finances', { filter: navigationParams?.returnFilter || 'all' }),
     };
 
     switch (activeScreen) {
@@ -132,6 +155,8 @@ export default function LandlordApp({ user, onLogout }) {
             initialFilter={navigationParams?.filter || 'all'}
           />
         );
+      case 'payment-review':
+        return <PaymentReviewScreen user={user} navigation={navigation} />;
       case 'tenant-detail':
         return <TenantDetailFinancial route={{ params: navigationParams }} navigation={navigation} />;
       default:
@@ -148,7 +173,7 @@ export default function LandlordApp({ user, onLogout }) {
   };
 
   const handleMenuNavigate = (screen) => {
-    setActiveScreen(screen);
+    handleNavigate(screen);
     closeMenu();
   };
 
@@ -181,7 +206,9 @@ export default function LandlordApp({ user, onLogout }) {
       ) : (
         <>
           <View style={{ flex: 1 }}>{renderScreen()}</View>
-          <LandlordBottomNav activeScreen={activeScreen} onNavigate={handleNavigate} user={user} pendingApprovalsCount={pendingApprovalsCount} />
+          {activeScreen !== 'payment-review' && (
+            <LandlordBottomNav activeScreen={activeScreen} onNavigate={handleNavigate} user={user} pendingApprovalsCount={pendingApprovalsCount} />
+          )}
         </>
       )}
 

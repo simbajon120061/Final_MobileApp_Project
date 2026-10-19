@@ -1,7 +1,7 @@
-import ScreenSkeleton from './components/ScreenSkeleton';
 import React, { useEffect, useState } from 'react';
 import { BackHandler, Linking, Platform } from 'react-native';
 import { ThemeProvider } from './utils/ThemeContext';
+import OpeningScreen from './components/OpeningScreen';
 import LoginScreen from './screens/auth/LoginScreen';
 import LandlordApp from './LandlordApp';
 import TenantApp from './TenantApp';
@@ -79,7 +79,7 @@ function AppRouter() {
     setCurrentUser(null);
   };
 
-  if (checkingAuth) return <ScreenSkeleton />;
+  if (checkingAuth) return <OpeningScreen />;
 
   if (passwordRecovery) {
     return <PasswordRecoveryScreen onComplete={(user) => {
@@ -111,4 +111,3 @@ export default function App() {
     </ThemeProvider>
   );
 }
-

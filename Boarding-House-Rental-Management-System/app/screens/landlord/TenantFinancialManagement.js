@@ -11,7 +11,7 @@ import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 const TENANTS_PER_PAGE = 5;
 
-export default function TenantFinancialManagement({ initialFilter = 'all' }) {
+export default function TenantFinancialManagement({ initialFilter = 'all', navigation }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
 
@@ -139,7 +139,36 @@ export default function TenantFinancialManagement({ initialFilter = 'all' }) {
           >
             OWNER PORTAL
           </Text>
-          <Text style={{ fontSize: fs(32), color: colors.text, fontWeight: '700' }}>Tenant Finances</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: isMobile ? 4 : spacing.sm }}>
+            <Text style={{ fontSize: fs(32), color: colors.text, fontWeight: '700', flex: 1 }}>Tenant Finances</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Review tenant payment proofs"
+              onPress={() => navigation?.navigate('payment-review', { returnFilter: activeFilter })}
+              style={{
+                minWidth: isMobile ? 58 : undefined,
+                minHeight: isMobile ? 46 : 42,
+                flexDirection: isMobile ? 'column' : 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: isMobile ? 0 : 7,
+                paddingHorizontal: isMobile ? 7 : 14,
+                paddingVertical: isMobile ? 4 : 0,
+                borderRadius: 10,
+                backgroundColor: colors.accent,
+              }}
+            >
+              {!isMobile && <Ionicons name="receipt-outline" size={17} color="#fff" />}
+              {isMobile ? (
+                <>
+                  <Text style={{ fontSize: fs(10), fontWeight: '700', lineHeight: fs(12), color: '#fff' }}>Review</Text>
+                  <Text style={{ fontSize: fs(10), fontWeight: '700', lineHeight: fs(12), color: '#fff' }}>Payments</Text>
+                </>
+              ) : (
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: '#fff' }}>Payment Review</Text>
+              )}
+            </TouchableOpacity>
+          </View>
           <Text style={{ fontSize: fs(15), color: colors.textSecondary, marginTop: 4 }}>
             Manage payments and balances
           </Text>
@@ -288,6 +317,29 @@ export default function TenantFinancialManagement({ initialFilter = 'all' }) {
 
                   {/* Action Buttons */}
                   <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity
+                      onPress={() => navigation?.navigate('tenant-detail', {
+                        tenantId: tenant.tenantId,
+                        returnFilter: activeFilter,
+                      })}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View financial details for ${tenant.name}`}
+                      style={{
+                        flex: 1,
+                        backgroundColor: colors.card,
+                        borderWidth: 1,
+                        borderColor: colors.cardBorder,
+                        paddingVertical: 12,
+                        borderRadius: 10,
+                        alignItems: 'center',
+                        flexDirection: 'row',
+                        justifyContent: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <Ionicons name="person-outline" size={18} color={colors.accent} />
+                      <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.accent }}>Details</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleRecordPayment(tenant)}
                       disabled={tenant.balance <= 0}

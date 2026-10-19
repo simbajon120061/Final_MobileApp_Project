@@ -192,16 +192,16 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
         <View
           style={{
             ...cardStyle,
-            backgroundColor: balance > 0 ? colors.dangerBg : colors.successBg,
+            backgroundColor: balance > 0 ? colors.warningBg : colors.successBg,
             borderColor: balance > 0 ? colors.dangerText : colors.successText,
             padding: 20,
             marginBottom: spacing.sm,
           }}
         >
-          <Text style={{ fontSize: fs(14), color: balance > 0 ? colors.dangerText : colors.successText, marginBottom: 8 }}>
+          <Text style={{ fontSize: fs(14), color: balance > 0 ? colors.orangetext : colors.successText, marginBottom: 8 }}>
             Current Balance
           </Text>
-          <Text style={{ fontSize: fs(36), fontWeight: '700', color: balance > 0 ? colors.dangerText : colors.successText }}>
+          <Text style={{ fontSize: fs(36), fontWeight: '700', color: balance > 0 ? colors.warningText : colors.successText }}>
             ₱{balance.toLocaleString()}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
@@ -210,7 +210,7 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
               size={18}
               color={balance > 0 ? colors.dangerText : colors.successText}
             />
-            <Text style={{ fontSize: fs(14), fontWeight: '600', color: balance > 0 ? colors.dangerText : colors.successText }}>
+            <Text style={{ fontSize: fs(14), fontWeight: '600', color: balance > 0 ? colors.warningText : colors.successText }}>
               {balance === 0 ? 'All Paid Up!' : isOverdue ? `OVERDUE - Due: ${billingBreakdown?.dueDate}` : `Due: ${billingBreakdown?.dueDate || 'TBD'}`}
             </Text>
           </View>
@@ -289,6 +289,11 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
                 <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>₱{billingBreakdown.electricity.toLocaleString()}</Text>
               </View>
 
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>Water</Text>
+                <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>₱0</Text>
+              </View>
+
               {(billingBreakdown.additionalCharges || []).map((charge, index) => (
                 <View key={charge.id || `${charge.label}-${index}`} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Text style={{ flex: 1, fontSize: fs(14), color: colors.textSecondary }}>{charge.label || 'Additional charge'}</Text>
@@ -322,10 +327,10 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
 
             {billingBreakdown.receiptNumber && (
               <View style={{ backgroundColor: colors.successBg, padding: 10, borderRadius: 8, marginTop: 14 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ fontSize: fs(12), color: colors.successText }}>Last Payment Receipt</Text>
-                  <Text style={{ fontSize: fs(12), fontWeight: '600', color: colors.successText }}>{billingBreakdown.receiptNumber}</Text>
-                </View>
+                <Text style={{ fontSize: fs(12), color: colors.successText }}>Last Payment Receipt</Text>
+                <Text style={{ fontSize: fs(12), fontWeight: '600', color: colors.successText, width: '100%', flexShrink: 1, marginTop: 2 }}>
+                  {String(billingBreakdown.receiptNumber).replace(/(.{10})/g, '$1\u200B')}
+                </Text>
                 <Text style={{ fontSize: fs(11), color: colors.successText, marginTop: 2 }}>
                   Paid on {billingBreakdown.paymentDate}
                 </Text>
